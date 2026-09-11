@@ -1,0 +1,3 @@
+#development version of configreation
+server:
+  port: 8082
