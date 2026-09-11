@@ -26,7 +26,7 @@ public class RefreshTokenService {
     private final JwtService jwtService;
     private final CookieService cookieService;
     private final ModelMapper mapper;
-
+    private final RefreshTokenFamilyService refreshTokenFamilyService;
     @Transactional
     public TokenResponse rotate(String refreshToken, HttpServletResponse response) {
 
@@ -45,10 +45,15 @@ public class RefreshTokenService {
         }
 
         String newJti = UUID.randomUUID().toString();
+        String familyId = storedRefreshToken.getFamilyId();
 
         int updated = refreshTokenRepository.revokeIfActive(jti, newJti, Instant.now());
 
         if (updated == 0) {
+            // Reuse detected — this token was already consumed or expired.
+            // Assume compromise: kill every token in this family, including
+            // whatever the legitimate client is currently holding.
+            refreshTokenFamilyService.revokeFamily(familyId);
             throw new BadCredentialsException("Refresh token has been revoked");
         }
 
@@ -59,6 +64,7 @@ public class RefreshTokenService {
 
         RefreshToken newEntity = RefreshToken.builder()
                 .jti(newJti)
+                .familyId(familyId)
                 .user(user)
                 .createdAt(Instant.now())
                 .expiresAt(Instant.now().plusSeconds(jwtService.getRefreshTtlSeconds()))

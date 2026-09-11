@@ -69,11 +69,13 @@ public class AuthController {
 
         // Create JTI for refresh token
         String jti = UUID.randomUUID().toString();
+        String familyId = UUID.randomUUID().toString();
 
 
         // Store refresh token in DB
         RefreshToken refreshTokenEntity = RefreshToken.builder()
                         .jti(jti)
+                        .familyId(familyId)
                         .user(user)
                         .createdAt(Instant.now())
                         .expiresAt(

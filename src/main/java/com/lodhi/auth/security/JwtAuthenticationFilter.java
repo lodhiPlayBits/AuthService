@@ -21,12 +21,21 @@ import tools.jackson.databind.type.CollectionLikeType;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
 
+
+
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
+
+    private static final Set<String> PUBLIC_ENDPOINTS = Set.of(
+            "/api/v1/auth/login",
+            "/api/v1/auth/register",
+            "/api/v1/auth/refresh"
+    );
 
     private final JwtService jwtService;
     private final UserRepository userRepository;
@@ -87,6 +96,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return request.getRequestURI().endsWith("/api/v1/auth/login");
+        return PUBLIC_ENDPOINTS.contains(request.getRequestURI());
     }
 }
