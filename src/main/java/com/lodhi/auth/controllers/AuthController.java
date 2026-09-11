@@ -1,40 +1,18 @@
 package com.lodhi.auth.controllers;
 
 import com.lodhi.auth.dtos.*;
-import com.lodhi.auth.model.RefreshToken;
-import com.lodhi.auth.model.User;
-import com.lodhi.auth.respositories.RefreshTokenRepository;
-import com.lodhi.auth.respositories.UserRepository;
-import com.lodhi.auth.security.CookieService;
-import com.lodhi.auth.security.JwtService;
 import com.lodhi.auth.services.AuthService;
-
 import com.lodhi.auth.services.RefreshTokenService;
-import jakarta.servlet.http.Cookie;
+
+import com.lodhi.auth.utils.AuthUtils;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
-import jakarta.transaction.Transactional;
 import lombok.AllArgsConstructor;
 
-import org.modelmapper.ModelMapper;
-
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
-
-import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.security.authentication.DisabledException;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
-
 import org.springframework.web.bind.annotation.*;
-
-import java.time.Instant;
-import java.util.Arrays;
-import java.util.Optional;
-import java.util.UUID;
-
 import static org.springframework.http.ResponseEntity.ok;
 
 @RestController
@@ -43,105 +21,21 @@ import static org.springframework.http.ResponseEntity.ok;
 public class AuthController {
 
     private final AuthService authService;
-    private final CookieService cookieService;
     private final RefreshTokenService refreshTokenService;
-    private final AuthenticationManager authenticationManager;
-    private final UserRepository userRepository;
-    private final RefreshTokenRepository refreshTokenRepository;
-    private final JwtService jwtService;
-    private final ModelMapper mapper;
-
-
-    // =========================================================
-    // LOGIN
-    // =========================================================
+    private final AuthUtils authUtils;
 
     @PostMapping("/login")
-    public ResponseEntity<TokenResponse> login(@RequestBody LoginRequestDTO loginRequestDTO, HttpServletResponse response) {
-
-        Authentication authentication = authenticate(loginRequestDTO);
-        User user = userRepository.findByEmail(authentication.getName()).orElseThrow(() ->
-                        new BadCredentialsException("Invalid username or password"));
-
-        if (!user.isEnabled()) {
-            throw new DisabledException("User is disabled");
-        }
-
-        // Create JTI for refresh token
-        String jti = UUID.randomUUID().toString();
-        String familyId = UUID.randomUUID().toString();
-
-
-        // Store refresh token in DB
-        RefreshToken refreshTokenEntity = RefreshToken.builder()
-                        .jti(jti)
-                        .familyId(familyId)
-                        .user(user)
-                        .createdAt(Instant.now())
-                        .expiresAt(
-                                Instant.now().plusSeconds(
-                                        jwtService.getRefreshTtlSeconds()
-                                )
-                        )
-                        .revoked(false)
-                        .build();
-
-        refreshTokenRepository.save(refreshTokenEntity);
-
-        // Generate access token
-        String accessToken = jwtService.generateAccessToken(user);
-
-
-        // Generate refresh token
-        String refreshToken = jwtService.generateRefreshToken(user,jti);
-
-
-        // Put refresh token in HttpOnly cookie
-        cookieService.attachRefreshCookie(response, refreshToken, jwtService.getRefreshTtlSeconds());
-
-        cookieService.addNoStoreHeaders(response);
-
-
-        TokenResponse tokenResponse = TokenResponse.of( accessToken, jwtService.getAccessTtlSeconds(),"Bearer",mapper.map(user,UserResponseDTO.class));
-
-        return ResponseEntity.ok(tokenResponse);
+    public ResponseEntity<TokenResponse> login(
+            @RequestBody LoginRequestDTO loginRequestDTO,
+            HttpServletResponse response
+    ) {
+        return ok(authService.login(loginRequestDTO, response));
     }
-
-
-    // =========================================================
-    // AUTHENTICATION
-    // =========================================================
-
-    private Authentication authenticate( LoginRequestDTO loginRequestDTO) {
-        try {
-            return authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(
-                            loginRequestDTO.getEmail(),
-                            loginRequestDTO.getPassword()
-                    )
-            );
-
-        } catch (Exception e) {
-            throw new BadCredentialsException(
-                    "Invalid username or password"
-            );
-        }
-    }
-
-
-    // =========================================================
-    // REGISTER
-    // =========================================================
 
     @PostMapping("/register")
-    public ResponseEntity<UserResponseDTO> registerUser( @RequestBody UserRequestDTO userRequestDTO) {
-        return ok( authService.registeruser(userRequestDTO));
+    public ResponseEntity<UserResponseDTO> registerUser(@RequestBody UserRequestDTO userRequestDTO) {
+        return ok(authService.registeruser(userRequestDTO));
     }
-
-
-    // =========================================================
-    // REFRESH TOKEN
-    // =========================================================
 
     @PostMapping("/refresh")
     public ResponseEntity<TokenResponse> refreshToken(
@@ -150,59 +44,11 @@ public class AuthController {
             HttpServletResponse response
     ) {
         String refreshToken =
-                readRefreshTokenFromRequest(refreshTokenRequest, request)
+                authUtils.readRefreshTokenFromRequest(refreshTokenRequest, request)
                         .orElseThrow(() -> new BadCredentialsException("Refresh token missing"));
 
-        return ResponseEntity.ok(refreshTokenService.rotate(refreshToken, response));
+        return ok(refreshTokenService.rotate(refreshToken, response));
     }
 
-
-
-    private Optional<String> readRefreshTokenFromRequest( RefreshTokenRequest refreshTokenRequest,HttpServletRequest request ) {
-
-        if (request.getCookies() != null) {
-            Optional<String> fromCookie = Arrays.stream( request.getCookies())
-                            .filter(cookie -> cookieService.getRefreshTokenCookieName().equals(cookie.getName()))
-                            .map(Cookie::getValue)
-                            .filter(value -> value != null && !value.isBlank())
-                            .findFirst();
-
-            if (fromCookie.isPresent()) {
-                return fromCookie;
-            }
-        }
-
-
-        // -----------------------------------------------------
-        // 2. Request body
-        // -----------------------------------------------------
-
-        if (refreshTokenRequest != null && refreshTokenRequest.refreshToken() != null && !refreshTokenRequest.refreshToken().isBlank()) {
-            return Optional.of(refreshTokenRequest.refreshToken());
-        }
-
-        // -----------------------------------------------------
-        // 3. X-Refresh-Token header
-        // -----------------------------------------------------
-
-        String refreshHeader = request.getHeader("X-Refresh-Token");
-
-        if (refreshHeader != null && !refreshHeader.isBlank()) {
-            return Optional.of( refreshHeader.trim());
-        }
-
-        // -----------------------------------------------------
-        // 4. Authorization: Bearer
-        // -----------------------------------------------------
-
-        String authHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
-        if (authHeader != null && authHeader.regionMatches(true,0,"Bearer ",0,7)) {
-            String candidateToken = authHeader.substring(7).trim();
-            if (!candidateToken.isEmpty()) {
-                return Optional.of(candidateToken);
-            }
-        }
-        return Optional.empty();
-    }
 
 }
