@@ -38,5 +38,5 @@ security:
     cookie-http-only: ${JWT_COOKIE_HTTP_ONLY:true}
     cookie-secure: ${JWT_COOKIE_SECURE:false}
     cookie-same-site: ${JWT_COOKIE_SAME_SITE:lax}
-    cookie-domain: ${JWT_COOKIE_DOMAIN:.lodhi.com}
+    cookie-domain: ${JWT_COOKIE_DOMAIN:}
 
