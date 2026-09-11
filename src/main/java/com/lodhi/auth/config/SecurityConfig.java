@@ -1,7 +1,5 @@
 package com.lodhi.auth.config;
 
-
-import com.fasterxml.jackson.annotation.JsonInclude;
 import com.lodhi.auth.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;

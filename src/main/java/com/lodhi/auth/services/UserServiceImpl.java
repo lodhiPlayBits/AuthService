@@ -8,12 +8,9 @@ import com.lodhi.auth.exceptions.BlankFieldException;
 import com.lodhi.auth.exceptions.ResourceNotFoundException;
 import com.lodhi.auth.model.User;
 import com.lodhi.auth.respositories.UserRepository;
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
-
-import java.time.Instant;
 import java.util.Optional;
 
 
