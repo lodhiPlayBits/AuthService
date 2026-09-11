@@ -13,7 +13,7 @@ public class RefreshTokenFamilyService {
     private final RefreshTokenRepository refreshTokenRepository;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public int revokeFamily(String familyId) {
-        return refreshTokenRepository.revokeFamily(familyId);
+    public void revokeFamily(String familyId) {
+        refreshTokenRepository.revokeFamily(familyId);
     }
 }

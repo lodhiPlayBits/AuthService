@@ -6,6 +6,8 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import lombok.Getter;
+import lombok.Setter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -17,6 +19,9 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @Service
+@Getter
+@Setter
+
 public class JwtService {
 
     private final SecretKey secretKey;
@@ -125,15 +130,4 @@ public class JwtService {
         return claims.getId();
     }
 
-    public long getAccessTtlSeconds() {
-        return accessTtlSeconds;
-    }
-
-    public long getRefreshTtlSeconds() {
-        return refreshTtlSeconds;
-    }
-
-    public String getIssuer() {
-        return issuer;
-    }
 }
