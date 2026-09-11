@@ -39,6 +39,9 @@ public class RefreshToken {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
+    @Column(nullable = false)
+    private String familyId;
+
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
