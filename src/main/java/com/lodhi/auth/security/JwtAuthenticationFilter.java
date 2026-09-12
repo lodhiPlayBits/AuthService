@@ -47,8 +47,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (header != null && header.startsWith("Bearer ")) {
             String token = header.substring(7);
 
+            Jws<Claims> parsed = jwtService.parseToken(token);
+            Claims claims = parsed.getPayload();
             try {
-                if (!jwtService.isAccessToken(token)) {
+                if (!jwtService.isAccessToken(claims)) {
                     // Not an access token (e.g. a refresh token used here by mistake,
                     // or wrong type claim). Don't authenticate. Not an error — continue
                     // unauthenticated and let Spring Security's normal 401/403 handling
@@ -56,9 +58,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     filterChain.doFilter(request, response);
                     return;
                 }
-
-                Jws<Claims> parsed = jwtService.parseToken(token);
-                Claims claims = parsed.getPayload();
 
                 Long userId = Long.parseLong(claims.getSubject()); // was claims.getId() — jti, not sub
 

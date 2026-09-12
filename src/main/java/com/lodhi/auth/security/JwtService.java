@@ -16,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Date;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -47,6 +48,7 @@ public class JwtService {
     public String generateAccessToken(User user) {
 
         Instant now = Instant.now();
+        String jti= UUID.randomUUID().toString();
 
         List<String> roles = user.getRoles() == null
                 ? List.of()
@@ -56,7 +58,7 @@ public class JwtService {
                 .collect(Collectors.toList());
 
         return Jwts.builder()
-                .id(user.getId().toString())
+                .id(jti)
                 .subject(user.getId().toString())
                 .issuer(issuer)
                 .issuedAt(Date.from(now))
@@ -96,9 +98,7 @@ public class JwtService {
                 .parseSignedClaims(token);
     }
 
-    public boolean isAccessToken(String token) {
-
-        Claims claims = parseToken(token).getPayload();
+    public boolean isAccessToken(Claims claims) {
 
         return "access".equals(
                 claims.get("type", String.class)
