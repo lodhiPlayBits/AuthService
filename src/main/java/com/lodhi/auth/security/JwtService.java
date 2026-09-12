@@ -105,9 +105,7 @@ public class JwtService {
         );
     }
 
-    public boolean isRefreshToken(String token) {
-
-        Claims claims = parseToken(token).getPayload();
+    public boolean isRefreshToken(Claims claims) {
 
         return "refresh".equals(
                 claims.get("type", String.class)
