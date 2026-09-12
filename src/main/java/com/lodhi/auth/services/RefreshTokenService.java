@@ -8,6 +8,8 @@ import com.lodhi.auth.respositories.RefreshTokenRepository;
 import com.lodhi.auth.respositories.UserRepository;
 import com.lodhi.auth.security.CookieService;
 import com.lodhi.auth.security.JwtService;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jws;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.transaction.Transactional;
 import lombok.AllArgsConstructor;
@@ -30,7 +32,11 @@ public class RefreshTokenService {
     @Transactional
     public TokenResponse rotate(String refreshToken, HttpServletResponse response) {
 
-        if (!jwtService.isRefreshToken(refreshToken)) {
+        Jws<Claims> jws = jwtService.parseToken(refreshToken);
+
+        Claims claims = jws.getPayload();
+
+        if (!jwtService.isRefreshToken(claims)) {
             throw new BadCredentialsException("Invalid refresh token");
         }
 
