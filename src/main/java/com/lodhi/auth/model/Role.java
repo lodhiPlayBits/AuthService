@@ -1,8 +1,7 @@
 package com.lodhi.auth.model;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
+import com.lodhi.auth.enums.RoleType;
+import jakarta.persistence.*;
 import lombok.*;
 
 import java.util.UUID;
@@ -14,10 +13,14 @@ import java.util.UUID;
 @Setter
 @Builder
 @Entity
+@Table(name = "role")
 public class Role {
 
     @Id
-    private UUID id=UUID.randomUUID();
-    @Column(unique = true, nullable = false)
-    private String roleName;
+    @GeneratedValue(strategy = GenerationType.UUID)
+    private UUID id;
+    
+    @Enumerated(EnumType.STRING)
+    @Column(name = "role_type", nullable = false, unique = true)
+    private RoleType roleType;
 }

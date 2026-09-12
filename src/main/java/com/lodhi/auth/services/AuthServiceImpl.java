@@ -32,7 +32,6 @@ public class AuthServiceImpl implements AuthService {
     private final UserService userService;
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
-    private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final JwtService jwtService;
     private final CookieService cookieService;
@@ -40,7 +39,6 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public UserResponseDTO registeruser(UserRequestDTO userRequestDTO) {
-        userRequestDTO.setPassword(passwordEncoder.encode(userRequestDTO.getPassword()));
         return userService.createUser(userRequestDTO);
     }
 

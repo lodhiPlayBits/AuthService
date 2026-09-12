@@ -1,8 +1,7 @@
 package com.lodhi.auth.dtos;
 
 
-import jakarta.persistence.Entity;
-
+import com.lodhi.auth.enums.RoleType;
 import lombok.*;
 
 import java.util.UUID;
@@ -13,9 +12,7 @@ import java.util.UUID;
 @Getter
 @Setter
 @Builder
-
 public class RoleDTO {
 
-    private UUID id;
-    private String role_name;
+    private String roleName;
 }

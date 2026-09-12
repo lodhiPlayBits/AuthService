@@ -50,12 +50,9 @@ public class JwtService {
         Instant now = Instant.now();
         String jti= UUID.randomUUID().toString();
 
-        List<String> roles = user.getRoles() == null
-                ? List.of()
-                : user.getRoles()
-                .stream()
-                .map(Role::getRoleName)
-                .collect(Collectors.toList());
+        List<String> roles = user.getRoles().stream()
+                .map(role -> role.getRoleType().name())
+                .toList();
 
         return Jwts.builder()
                 .id(jti)
@@ -81,10 +78,7 @@ public class JwtService {
                 .subject(user.getId().toString())
                 .issuer(issuer)
                 .issuedAt(Date.from(now))
-                .expiration(Date.from(
-                        now.plusSeconds(refreshTtlSeconds)
-                ))
-                .claim("email", user.getEmail())
+                .expiration(Date.from(now.plusSeconds(refreshTtlSeconds)))
                 .claim("type", "refresh")
                 .signWith(secretKey)
                 .compact();
@@ -112,19 +106,11 @@ public class JwtService {
         );
     }
 
-    public Long getUserId(String token) {
-
-        Claims claims = parseToken(token).getPayload();
-
-        return Long.parseLong(
-                claims.getSubject()
-        );
+    public Long getUserId(Claims claims) {
+        return Long.parseLong(claims.getSubject());
     }
 
-    public String getJti(String token) {
-
-        Claims claims = parseToken(token).getPayload();
-
+    public String getJti(Claims claims) {
         return claims.getId();
     }
 

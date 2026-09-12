@@ -2,8 +2,10 @@ package com.lodhi.auth.model;
 
 import com.lodhi.auth.enums.Gender;
 import com.lodhi.auth.enums.Provider;
+import com.lodhi.auth.enums.RoleType;
 import com.lodhi.auth.model.Role;
 
+import com.lodhi.auth.services.RoleService;
 import jakarta.persistence.*;
 import lombok.*;
 import org.springframework.security.core.GrantedAuthority;
@@ -13,7 +15,6 @@ import org.springframework.security.core.userdetails.UserDetails;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
 @NoArgsConstructor
@@ -27,8 +28,9 @@ import java.util.Set;
 
 
 public class User implements UserDetails {
+
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name="user_id")
     private Long Id;
     @Column(unique = true,nullable = false)
@@ -93,7 +95,7 @@ public class User implements UserDetails {
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         return roles.stream()
-                .map(role -> new SimpleGrantedAuthority(role.getRoleName()))
+                .map(role -> new SimpleGrantedAuthority("ROLE_"+role.getRoleType()))
                 .toList();
     }
 

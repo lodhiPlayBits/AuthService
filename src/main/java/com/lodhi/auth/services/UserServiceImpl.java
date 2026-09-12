@@ -4,14 +4,18 @@ import com.lodhi.auth.dtos.UpdateUserRequestDTO;
 import com.lodhi.auth.dtos.UserRequestDTO;
 import com.lodhi.auth.dtos.UserResponseDTO;
 import com.lodhi.auth.enums.Provider;
+import com.lodhi.auth.enums.RoleType;
 import com.lodhi.auth.exceptions.BlankFieldException;
 import com.lodhi.auth.exceptions.ResourceNotFoundException;
+import com.lodhi.auth.model.Role;
 import com.lodhi.auth.model.User;
 import com.lodhi.auth.respositories.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import java.util.Optional;
+import java.util.Set;
 
 
 @Service
@@ -20,6 +24,8 @@ public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
     private final ModelMapper modelMapper;
+    private final RoleService roleService;
+    private final PasswordEncoder passwordEncoder;
 
 
     @Override
@@ -44,6 +50,11 @@ public class UserServiceImpl implements UserService {
         
         User user=modelMapper.map(userRequestDTO,User.class);
         user.setEnable(true);
+        user.setPassword(passwordEncoder.encode(userRequestDTO.getPassword()));
+
+        Role userRole=roleService.getRole(RoleType.USER);
+
+        user.setRoles(Set.of(userRole));
 
         user.setProvider(userRequestDTO.getProvider()!=null ? userRequestDTO.getProvider(): Provider.LOCAL);
 

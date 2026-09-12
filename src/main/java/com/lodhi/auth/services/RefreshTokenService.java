@@ -40,8 +40,8 @@ public class RefreshTokenService {
             throw new BadCredentialsException("Invalid refresh token");
         }
 
-        String jti = jwtService.getJti(refreshToken);
-        Long userId = jwtService.getUserId(refreshToken);
+        String jti = claims.getId();
+        Long userId = Long.parseLong(claims.getSubject());
 
         RefreshToken storedRefreshToken = refreshTokenRepository.findByJti(jti)
                 .orElseThrow(() -> new BadCredentialsException("Invalid refresh token"));

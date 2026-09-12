@@ -48,10 +48,9 @@ public class SecurityConfig {
                 .anyRequest()
                 .authenticated()
         );
-        http.httpBasic(Customizer.withDefaults());
+
         http.exceptionHandling(ex -> {
             ex.authenticationEntryPoint((request, response, authException) -> {
-                authException.printStackTrace();
                 response.setStatus(HttpStatus.UNAUTHORIZED.value());
                 response.setContentType("application/json");
                 String message = "Unauthorized Access";
