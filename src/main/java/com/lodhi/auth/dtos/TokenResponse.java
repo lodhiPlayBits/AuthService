@@ -1,17 +1,19 @@
 package com.lodhi.auth.dtos;
 
+import com.lodhi.auth.dtos.response.CreateUserResponseDTO;
+
 public record TokenResponse(
         String accessToken,
         long expiresIn,
         String tokenType,
-        UserResponseDTO user
+        CreateUserResponseDTO user
 ) {
 
     public static TokenResponse of(
             String accessToken,
             long expiresIn,
             String tokenType,
-            UserResponseDTO user
+            CreateUserResponseDTO user
     ) {
         return new TokenResponse(
                 accessToken,

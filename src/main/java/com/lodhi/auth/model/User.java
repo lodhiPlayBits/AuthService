@@ -99,9 +99,19 @@ public class User implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return roles.stream()
-                .map(role -> new SimpleGrantedAuthority("ROLE_"+role.getRoleType()))
-                .toList();
+        Set<GrantedAuthority> authorities = new HashSet<>();
+        
+        // Add roles
+        for (Role role : roles) {
+            authorities.add(new SimpleGrantedAuthority("ROLE_" + role.getRoleType()));
+            
+            // Add permissions from each role
+            for (Permission permission : role.getPermissions()) {
+                authorities.add(new SimpleGrantedAuthority(permission.getName()));
+            }
+        }
+        
+        return authorities;
     }
 
     @Override

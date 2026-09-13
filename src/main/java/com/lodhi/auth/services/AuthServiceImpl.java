@@ -1,23 +1,32 @@
 package com.lodhi.auth.services;
 
+import java.time.Instant;
+import java.util.UUID;
+
+import org.modelmapper.ModelMapper;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.authentication.LockedException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.lodhi.auth.audit.AuditService;
-import com.lodhi.auth.dtos.*;
+import com.lodhi.auth.dtos.LoginRequestDTO;
+import com.lodhi.auth.dtos.LoginResponseDTO;
+import com.lodhi.auth.dtos.request.CreateUserRequestDTO;
+import com.lodhi.auth.dtos.response.CreateUserResponseDTO;
 import com.lodhi.auth.model.RefreshToken;
 import com.lodhi.auth.model.User;
 import com.lodhi.auth.respositories.RefreshTokenRepository;
 import com.lodhi.auth.security.CookieService;
 import com.lodhi.auth.security.JwtService;
+
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import org.modelmapper.ModelMapper;
-import org.springframework.security.authentication.*;
-import org.springframework.security.core.Authentication;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.time.Instant;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -32,8 +41,8 @@ public class AuthServiceImpl implements AuthService {
     private final AuditService auditService;
 
     @Override
-    public UserResponseDTO registeruser(UserRequestDTO userRequestDTO) {
-        return userService.createUser(userRequestDTO);
+    public CreateUserResponseDTO registeruser(CreateUserRequestDTO createUserRequestDTO) {
+        return userService.createUser(createUserRequestDTO);
     }
 
     @Override
@@ -83,7 +92,7 @@ public class AuthServiceImpl implements AuthService {
             // Build response (refresh token NOT included in body, only in cookie)
             return LoginResponseDTO.builder()
                     .accessToken(accessToken)
-                    .user(mapper.map(user, UserResponseDTO.class))
+                    .user(mapper.map(user, CreateUserResponseDTO.class))
                     .build();
                     
         } catch (BadCredentialsException | DisabledException | LockedException e) {
@@ -91,5 +100,10 @@ public class AuthServiceImpl implements AuthService {
             auditService.logLoginFailure(loginRequestDTO.getIdentifier(), e.getMessage(), request);
             throw e;
         }
+    }
+
+    @Override
+    public Iterable<CreateUserResponseDTO> getAllUsers() {
+        return userService.getAllUsers();
     }
 }
