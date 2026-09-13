@@ -1,23 +1,27 @@
 package com.lodhi.auth.security;
 
-import com.lodhi.auth.model.Role;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.Date;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+import javax.crypto.SecretKey;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import com.lodhi.auth.model.Permission;
 import com.lodhi.auth.model.User;
+
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import lombok.Getter;
 import lombok.Setter;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
-
-import javax.crypto.SecretKey;
-import java.nio.charset.StandardCharsets;
-import java.time.Instant;
-import java.util.Date;
-import java.util.List;
-import java.util.UUID;
-import java.util.stream.Collectors;
 
 @Service
 @Getter
@@ -50,9 +54,16 @@ public class JwtService {
         Instant now = Instant.now();
         String jti= UUID.randomUUID().toString();
 
+        // Extract roles
         List<String> roles = user.getRoles().stream()
-                .map(role -> role.getRoleType().name())
+                .map(role -> role.getName())
                 .toList();
+
+        // Extract all permissions from all roles (flatten and deduplicate)
+        Set<String> permissions = user.getRoles().stream()
+                .flatMap(role -> role.getPermissions().stream())
+                .map(Permission::getName)
+                .collect(Collectors.toSet());
 
         return Jwts.builder()
                 .id(jti)
@@ -63,6 +74,7 @@ public class JwtService {
                         now.plusSeconds(accessTtlSeconds)
                 ))
                 .claim("roles", roles)
+                .claim("permissions", permissions)
                 .claim("type", "access")
                 .signWith(secretKey)
                 .compact();

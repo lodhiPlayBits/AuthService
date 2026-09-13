@@ -1,18 +1,20 @@
 package com.lodhi.auth.initialization;
 
-import com.lodhi.auth.enums.Gender;
-import com.lodhi.auth.enums.Provider;
-import com.lodhi.auth.enums.RoleType;
-import com.lodhi.auth.model.Role;
-import com.lodhi.auth.model.User;
-import com.lodhi.auth.respositories.RoleRepository;
-import com.lodhi.auth.respositories.UserRepository;
-import lombok.RequiredArgsConstructor;
+import java.util.Set;
+
+import com.lodhi.auth.constants.SystemRoles;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
-import java.util.Set;
+import com.lodhi.auth.enums.Gender;
+import com.lodhi.auth.enums.Provider;
+import com.lodhi.auth.model.Role;
+import com.lodhi.auth.model.User;
+import com.lodhi.auth.respositories.RoleRepository;
+import com.lodhi.auth.respositories.UserRepository;
+
+import lombok.RequiredArgsConstructor;
 
 
 @RequiredArgsConstructor
@@ -30,7 +32,7 @@ public class AdminInitializer implements CommandLineRunner {
             return;
         }
 
-        Role adminRole = roleRepository.findByRoleType(RoleType.ADMIN).orElseThrow(()->new IllegalStateException("Admin Role not found"));
+        Role adminRole = roleRepository.findByName(SystemRoles.ADMIN).orElseThrow(()->new IllegalStateException("Admin Role not found"));
 
         User admin=new User();
 

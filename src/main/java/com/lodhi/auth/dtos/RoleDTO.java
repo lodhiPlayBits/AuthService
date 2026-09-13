@@ -1,10 +1,11 @@
 package com.lodhi.auth.dtos;
 
 
-import com.lodhi.auth.enums.RoleType;
-import lombok.*;
-
-import java.util.UUID;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 
 @NoArgsConstructor

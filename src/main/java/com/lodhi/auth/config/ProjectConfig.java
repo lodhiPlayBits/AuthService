@@ -1,12 +1,13 @@
 package com.lodhi.auth.config;
 
-import com.lodhi.auth.dtos.RoleDTO;
-import com.lodhi.auth.model.Role;
 import org.modelmapper.Converter;
 import org.modelmapper.ModelMapper;
 import org.modelmapper.convention.MatchingStrategies;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+import com.lodhi.auth.dtos.RoleDTO;
+import com.lodhi.auth.model.Role;
 
 @Configuration
 public class ProjectConfig {
@@ -20,8 +21,8 @@ public class ProjectConfig {
         Converter<Role, RoleDTO> roleToRoleDTOConverter = context -> {
             Role source = context.getSource();
             RoleDTO destination = new RoleDTO();
-            if (source != null && source.getRoleType() != null) {
-                destination.setRoleName(source.getRoleType().name());
+            if (source != null && source.getName() != null) {
+                destination.setRoleName(source.getName());
             }
             return destination;
         };

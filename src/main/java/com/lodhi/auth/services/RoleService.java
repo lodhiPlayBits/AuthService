@@ -6,12 +6,11 @@ import java.util.UUID;
 
 import com.lodhi.auth.dtos.request.CreateRoleRequestDTO;
 import com.lodhi.auth.dtos.response.RoleResponseDTO;
-import com.lodhi.auth.enums.RoleType;
 import com.lodhi.auth.model.Role;
 
 public interface RoleService {
 
-    Role getRole(RoleType roleType);
+    Role getRoleByName(String roleName);
     
     Role getRoleById(UUID roleId);
     

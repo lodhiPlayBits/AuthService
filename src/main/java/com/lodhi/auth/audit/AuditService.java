@@ -1,13 +1,15 @@
 package com.lodhi.auth.audit;
 
-import com.lodhi.auth.respositories.AuditLogRepository;
-import jakarta.servlet.http.HttpServletRequest;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import java.time.Instant;
+
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
-import java.time.Instant;
+import com.lodhi.auth.respositories.AuditLogRepository;
+
+import jakarta.servlet.http.HttpServletRequest;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
 @RequiredArgsConstructor
@@ -69,6 +71,40 @@ public class AuditService {
     public void logLogout(Long userId, String username, HttpServletRequest request) {
         logEvent(userId, username, AuditEventType.LOGOUT, true, 
                 "User logged out", request);
+    }
+    
+    /**
+     * Simplified audit logging for service-layer operations where HttpServletRequest is not available.
+     * Used for system/background operations.
+     */
+    @Async
+    public void logServiceEvent(
+            Long userId,
+            String username,
+            AuditEventType eventType,
+            boolean success,
+            String details
+    ) {
+        try {
+            AuditLog auditLog = AuditLog.builder()
+                    .userId(userId)
+                    .username(username)
+                    .eventType(eventType)
+                    .success(success)
+                    .details(details)
+                    .ipAddress("system")  // No request context
+                    .userAgent("system")  // No request context
+                    .timestamp(Instant.now())
+                    .build();
+
+            auditLogRepository.save(auditLog);
+            
+            log.info("Audit logged (service): user={}, event={}, success={}", 
+                username, eventType, success);
+                
+        } catch (Exception e) {
+            log.error("Failed to save audit log", e);
+        }
     }
 
     private String extractIpAddress(HttpServletRequest request) {
