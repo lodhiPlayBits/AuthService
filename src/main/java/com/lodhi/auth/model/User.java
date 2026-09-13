@@ -32,7 +32,13 @@ public class User implements UserDetails {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name="user_id")
-    private Long Id;
+    private Long id;
+
+    @Column(nullable = false, unique = true)
+    private String username;
+
+
+
     @Column(unique = true,nullable = false)
     private String email;
     @Column(nullable = false)
@@ -47,9 +53,8 @@ public class User implements UserDetails {
 
     private String image;
 
-    @Column(nullable = false)
-
-    private boolean isEnable;
+    @Column(name = "is_enable", nullable = false)
+    private boolean enabled;
 
     @Column(nullable = false)
     private Instant createdAt= Instant.now() ;
@@ -121,7 +126,7 @@ public class User implements UserDetails {
 
     @Override
     public boolean isEnabled() {
-        return this.isEnable;
+        return this.enabled;
     }
 
 

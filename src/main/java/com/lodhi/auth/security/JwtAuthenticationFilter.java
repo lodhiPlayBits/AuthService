@@ -19,6 +19,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.Date;
 import java.util.List;
 import java.util.Set;
 
@@ -56,7 +57,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             Jws<Claims> parsed = jwtService.parseToken(token);
             Claims claims = parsed.getPayload();
 
+            // Check token type
             if (!jwtService.isAccessToken(claims)) {
+                log.debug("Token is not an access token");
+                filterChain.doFilter(request, response);
+                return;
+            }
+
+            // Check expiration explicitly
+            if (claims.getExpiration().before(new Date())) {
+                log.debug("Access token has expired");
                 filterChain.doFilter(request, response);
                 return;
             }

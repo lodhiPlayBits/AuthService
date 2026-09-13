@@ -5,8 +5,8 @@ import com.lodhi.auth.dtos.UserRequestDTO;
 import com.lodhi.auth.dtos.UserResponseDTO;
 import com.lodhi.auth.enums.Provider;
 import com.lodhi.auth.enums.RoleType;
-import com.lodhi.auth.exceptions.BlankFieldException;
-import com.lodhi.auth.exceptions.ResourceNotFoundException;
+import com.lodhi.auth.exceptions.registration.UserAlreadyExistsException;
+import com.lodhi.auth.exceptions.resource.ResourceNotFoundException;
 import com.lodhi.auth.model.Role;
 import com.lodhi.auth.model.User;
 import com.lodhi.auth.respositories.UserRepository;
@@ -14,9 +14,8 @@ import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import java.util.Optional;
-import java.util.Set;
 
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -27,73 +26,57 @@ public class UserServiceImpl implements UserService {
     private final RoleService roleService;
     private final PasswordEncoder passwordEncoder;
 
-
     @Override
     public UserResponseDTO createUser(UserRequestDTO userRequestDTO) {
-        if(userRequestDTO.getEmail()==null || userRequestDTO.getEmail().isBlank()){
-            throw new BlankFieldException("Email is required");
-        }
-        if(userRequestDTO.getName()==null || userRequestDTO.getName().isBlank()){
-            throw new BlankFieldException("Name is required");
-        }
-
-        if(userRequestDTO.getPhoneNumber()==null || userRequestDTO.getPhoneNumber().isBlank()){
-            throw new BlankFieldException("Phone Number is required");
-        }
-        if(userRequestDTO.getPassword()==null || userRequestDTO.getPassword().isBlank()){
-            throw new BlankFieldException("Password is required");
-        }
-
+        // Check if user already exists
         if(userRepository.existsByEmail(userRequestDTO.getEmail())){
-            throw new IllegalArgumentException("Email Already existed");
+            throw new UserAlreadyExistsException("User with email " + userRequestDTO.getEmail() + " already exists");
+        }
+        if(userRepository.existsByUsername(userRequestDTO.getUserName())){
+            throw new UserAlreadyExistsException("User with email " + userRequestDTO.getUserName() + " already exists");
+        }
+        if(userRepository.existsByUsername(userRequestDTO.getPhoneNumber())){
+            throw new UserAlreadyExistsException("User with email " + userRequestDTO.getPhoneNumber() + " already exists");
         }
         
-        User user=modelMapper.map(userRequestDTO,User.class);
-        user.setEnable(true);
+        // Map DTO to entity
+        User user = modelMapper.map(userRequestDTO, User.class);
+        user.setEnabled(true);
         user.setPassword(passwordEncoder.encode(userRequestDTO.getPassword()));
 
-        Role userRole=roleService.getRole(RoleType.USER);
-
+        // Assign default USER role
+        Role userRole = roleService.getRole(RoleType.USER);
         user.setRoles(Set.of(userRole));
 
-        user.setProvider(userRequestDTO.getProvider()!=null ? userRequestDTO.getProvider(): Provider.LOCAL);
+        // Set provider (default to LOCAL if not specified)
+        user.setProvider(userRequestDTO.getProvider() != null ? userRequestDTO.getProvider() : Provider.LOCAL);
 
-        User savedUser=userRepository.save(user);
-
+        // Save user
+        User savedUser = userRepository.save(user);
 
         return modelMapper.map(savedUser, UserResponseDTO.class);
-
     }
 
     @Override
     public UserResponseDTO getUserByEmail(String email) {
-
-        Optional<User> user= userRepository.findByEmail(email);
-        if(user.isEmpty()){
-            throw new ResourceNotFoundException("Email not found");
-        }
-        System.out.println(user);
-        return modelMapper.map(user.get(),UserResponseDTO.class);
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("User", email));
+        return modelMapper.map(user, UserResponseDTO.class);
     }
 
     @Override
     public UserResponseDTO getUserById(Long id) {
-        Optional<User> user= userRepository.findById(id);
-        if(user.isEmpty()){
-            throw new ResourceNotFoundException("Email not found");
-        }
-        return modelMapper.map(user.get(),UserResponseDTO.class);
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("User", id));
+        return modelMapper.map(user, UserResponseDTO.class);
     }
 
     @Override
     public UserResponseDTO updateUser(UpdateUserRequestDTO updateUserRequestDTO, Long id) {
-
         User user = userRepository.findById(id)
-                .orElseThrow(() ->
-                        new ResourceNotFoundException("User does not exist"));
-        System.out.println("Before: " + user.getName());
+                .orElseThrow(() -> new ResourceNotFoundException("User", id));
+        
         modelMapper.map(updateUserRequestDTO, user);
-        System.out.println("After: " + user.getName());
         User updatedUser = userRepository.save(user);
 
         return modelMapper.map(updatedUser, UserResponseDTO.class);
@@ -101,7 +84,9 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public void deleteUser(Long id) {
-        User u=userRepository.findById(id).orElseThrow(()->new ResourceNotFoundException("User does not exit"));
+        if (!userRepository.existsById(id)) {
+            throw new ResourceNotFoundException("User", id);
+        }
         userRepository.deleteById(id);
     }
 
@@ -109,7 +94,7 @@ public class UserServiceImpl implements UserService {
     public Iterable<UserResponseDTO> getAllUsers() {
         return userRepository.findAll()
                 .stream()
-                .map(user ->modelMapper.map(user,UserResponseDTO.class))
+                .map(user -> modelMapper.map(user, UserResponseDTO.class))
                 .toList();
     }
 }

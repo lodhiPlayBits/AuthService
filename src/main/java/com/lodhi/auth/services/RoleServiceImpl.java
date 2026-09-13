@@ -4,9 +4,10 @@ import com.lodhi.auth.enums.RoleType;
 import com.lodhi.auth.model.Role;
 import com.lodhi.auth.respositories.RoleRepository;
 import lombok.AllArgsConstructor;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-@AllArgsConstructor
+@RequiredArgsConstructor
 @Service
 public class RoleServiceImpl implements RoleService {
 
