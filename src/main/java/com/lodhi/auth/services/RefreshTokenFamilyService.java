@@ -1,13 +1,15 @@
 package com.lodhi.auth.services;
 
-import com.lodhi.auth.respositories.RefreshTokenRepository;
-import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.lodhi.auth.respositories.RefreshTokenRepository;
+
+import lombok.RequiredArgsConstructor;
+
 @Service
-@AllArgsConstructor
+@RequiredArgsConstructor
 public class RefreshTokenFamilyService {
 
     private final RefreshTokenRepository refreshTokenRepository;

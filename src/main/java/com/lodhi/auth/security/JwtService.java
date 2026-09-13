@@ -62,7 +62,6 @@ public class JwtService {
                 .expiration(Date.from(
                         now.plusSeconds(accessTtlSeconds)
                 ))
-                .claim("email", user.getEmail())
                 .claim("roles", roles)
                 .claim("type", "access")
                 .signWith(secretKey)

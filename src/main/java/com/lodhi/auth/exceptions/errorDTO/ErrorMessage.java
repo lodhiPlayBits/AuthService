@@ -1,4 +1,5 @@
-package com.lodhi.auth.dtos;
+package com.lodhi.auth.exceptions.errorDTO;
+
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.lodhi.auth.exceptions.base.ErrorCode;

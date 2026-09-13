@@ -109,5 +109,31 @@ public class CookieService {
                 HttpHeaders.PRAGMA,
                 "no-cache"
         );
+
+        // Security headers
+        response.setHeader(
+                "X-Content-Type-Options",
+                "nosniff"
+        );
+
+        response.setHeader(
+                "X-Frame-Options",
+                "DENY"
+        );
+
+        response.setHeader(
+                "X-XSS-Protection",
+                "1; mode=block"
+        );
+
+        response.setHeader(
+                "Strict-Transport-Security",
+                "max-age=31536000; includeSubDomains"
+        );
+
+        response.setHeader(
+                "Content-Security-Policy",
+                "default-src 'self'"
+        );
     }
 }

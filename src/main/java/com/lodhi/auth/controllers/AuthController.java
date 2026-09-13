@@ -7,6 +7,7 @@ import com.lodhi.auth.services.RefreshTokenService;
 import com.lodhi.auth.utils.AuthUtils;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
 
 import lombok.AllArgsConstructor;
 
@@ -25,15 +26,16 @@ public class AuthController {
     private final AuthUtils authUtils;
 
     @PostMapping("/login")
-    public ResponseEntity<TokenResponse> login(
-            @RequestBody LoginRequestDTO loginRequestDTO,
-            HttpServletResponse response
+    public ResponseEntity<LoginResponseDTO> login(
+            @Valid @RequestBody LoginRequestDTO loginRequestDTO,
+            HttpServletResponse response,
+            HttpServletRequest request
     ) {
-        return ok(authService.login(loginRequestDTO, response));
+        return ok(authService.login(loginRequestDTO, response, request));
     }
 
     @PostMapping("/register")
-    public ResponseEntity<UserResponseDTO> registerUser(@RequestBody UserRequestDTO userRequestDTO) {
+    public ResponseEntity<UserResponseDTO> registerUser(@Valid @RequestBody UserRequestDTO userRequestDTO) {
         return ok(authService.registeruser(userRequestDTO));
     }
 
