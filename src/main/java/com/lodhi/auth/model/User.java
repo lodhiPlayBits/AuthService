@@ -2,10 +2,7 @@ package com.lodhi.auth.model;
 
 import com.lodhi.auth.enums.Gender;
 import com.lodhi.auth.enums.Provider;
-import com.lodhi.auth.enums.RoleType;
-import com.lodhi.auth.model.Role;
 
-import com.lodhi.auth.services.RoleService;
 import jakarta.persistence.*;
 import lombok.*;
 import org.springframework.security.core.GrantedAuthority;
@@ -103,7 +100,7 @@ public class User implements UserDetails {
         
         // Add roles
         for (Role role : roles) {
-            authorities.add(new SimpleGrantedAuthority("ROLE_" + role.getRoleType()));
+            authorities.add(new SimpleGrantedAuthority("ROLE_" + role.getName()));
             
             // Add permissions from each role
             for (Permission permission : role.getPermissions()) {

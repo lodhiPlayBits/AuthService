@@ -1,24 +1,37 @@
 package com.lodhi.auth.controllers;
 
-import com.lodhi.auth.dtos.request.*;
-import com.lodhi.auth.dtos.response.*;
+import java.util.List;
+import java.util.UUID;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.lodhi.auth.dtos.request.AssignPermissionsRequestDTO;
+import com.lodhi.auth.dtos.request.AssignRolesRequestDTO;
+import com.lodhi.auth.dtos.request.CreatePermissionRequestDTO;
+import com.lodhi.auth.dtos.request.CreateRoleRequestDTO;
+import com.lodhi.auth.dtos.response.CreateUserResponseDTO;
+import com.lodhi.auth.dtos.response.PermissionResponseDTO;
+import com.lodhi.auth.dtos.response.RoleResponseDTO;
+import com.lodhi.auth.security.RequiresPermission;
 import com.lodhi.auth.services.PermissionService;
 import com.lodhi.auth.services.RoleService;
 import com.lodhi.auth.services.UserService;
+
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/admin")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('admin:role:manage')")
 public class AdminController {
 
     private final RoleService roleService;
@@ -28,22 +41,26 @@ public class AdminController {
     // ==================== ROLE MANAGEMENT ====================
     
     @GetMapping("/roles")
+    @RequiresPermission("roles:read")
     public ResponseEntity<List<RoleResponseDTO>> getAllRoles() {
         return ResponseEntity.ok(roleService.getAllRoles());
     }
 
     @PostMapping("/roles")
+    @RequiresPermission("roles:create")
     public ResponseEntity<RoleResponseDTO> createRole(@Valid @RequestBody CreateRoleRequestDTO requestDTO) {
         return ResponseEntity.status(HttpStatus.CREATED).body(roleService.createRole(requestDTO));
     }
 
     @DeleteMapping("/roles/{roleId}")
+    @RequiresPermission("roles:delete")
     public ResponseEntity<Void> deleteRole(@PathVariable UUID roleId) {
         roleService.deleteRole(roleId);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/roles/{roleId}/permissions")
+    @RequiresPermission("roles:update")
     public ResponseEntity<RoleResponseDTO> assignPermissionsToRole(
             @PathVariable UUID roleId,
             @Valid @RequestBody AssignPermissionsRequestDTO requestDTO) {
@@ -51,6 +68,7 @@ public class AdminController {
     }
 
     @DeleteMapping("/roles/{roleId}/permissions")
+    @RequiresPermission("roles:update")
     public ResponseEntity<RoleResponseDTO> revokePermissionsFromRole(
             @PathVariable UUID roleId,
             @Valid @RequestBody AssignPermissionsRequestDTO requestDTO) {
@@ -60,17 +78,19 @@ public class AdminController {
     // ==================== PERMISSION MANAGEMENT ====================
 
     @GetMapping("/permissions")
-    @PreAuthorize("hasAuthority('admin:read')")
+    @RequiresPermission("permissions:read")
     public ResponseEntity<List<PermissionResponseDTO>> getAllPermissions() {
         return ResponseEntity.ok(permissionService.getAllPermissions());
     }
 
     @PostMapping("/permissions")
+    @RequiresPermission("permissions:create")
     public ResponseEntity<PermissionResponseDTO> createPermission(@Valid @RequestBody CreatePermissionRequestDTO requestDTO) {
         return ResponseEntity.status(HttpStatus.CREATED).body(permissionService.createPermission(requestDTO));
     }
 
     @DeleteMapping("/permissions/{permissionId}")
+    @RequiresPermission("permissions:delete")
     public ResponseEntity<Void> deletePermission(@PathVariable UUID permissionId) {
         permissionService.deletePermission(permissionId);
         return ResponseEntity.noContent().build();
@@ -79,6 +99,7 @@ public class AdminController {
     // ==================== USER ROLE MANAGEMENT ====================
 
     @PutMapping("/users/{userId}/roles")
+    @RequiresPermission("users:assign-roles")
     public ResponseEntity<CreateUserResponseDTO> assignRolesToUser(
             @PathVariable Long userId,
             @Valid @RequestBody AssignRolesRequestDTO requestDTO) {

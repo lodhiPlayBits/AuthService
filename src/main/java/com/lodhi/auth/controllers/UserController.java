@@ -42,19 +42,19 @@ public class UserController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('admin:update') or (hasAuthority('user:update') and #id == authentication.principal.id)")
+    @PreAuthorize("hasAuthority('admin:update') or (hasAuthority('user:update') and #id == authentication.principal.userId)")
     public ResponseEntity<CreateUserResponseDTO> updateUserByid(@RequestBody UpdateUserRequestDTO updateUserRequestDTO, @PathVariable Long id){
         return ResponseEntity.status(HttpStatus.OK).body(userService.updateUser(updateUserRequestDTO, id));
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('admin:read') or (hasAuthority('user:read') and #id == authentication.principal.id)")
+    @PreAuthorize("hasAuthority('admin:read') or (hasAuthority('user:read') and #id == authentication.principal.userId)")
     public ResponseEntity<CreateUserResponseDTO> getUserById(@PathVariable Long id){
         return ResponseEntity.status(HttpStatus.FOUND).body(userService.getUserById(id));
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('admin:delete') or (hasAuthority('user:delete') and #id == authentication.principal.id)")
+    @PreAuthorize("hasAuthority('admin:delete') or (hasAuthority('user:delete') and #id == authentication.principal.userId)")
     public ResponseEntity<Void> deleteUserByid(@PathVariable Long id){
         userService.deleteUser(id);
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build();

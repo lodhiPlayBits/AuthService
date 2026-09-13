@@ -1,13 +1,10 @@
 package com.lodhi.auth.security;
 
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jws;
-import io.jsonwebtoken.JwtException;
-import jakarta.servlet.FilterChain;
-import jakarta.servlet.ServletException;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
-import lombok.RequiredArgsConstructor;
+import java.io.IOException;
+import java.util.Date;
+import java.util.List;
+import java.util.Set;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -18,10 +15,14 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import java.io.IOException;
-import java.util.Date;
-import java.util.List;
-import java.util.Set;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jws;
+import io.jsonwebtoken.JwtException;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 
 @Component
 @RequiredArgsConstructor
@@ -72,7 +73,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
 
             String userId = claims.getSubject();
+            String jti = claims.getId();
             Object rolesClaim = claims.get("roles");
+            Object permissionsClaim = claims.get("permissions");
 
             if (!(rolesClaim instanceof List<?> rawRoles)
                     || rawRoles.stream().anyMatch(role -> !(role instanceof String))) {
@@ -83,14 +86,38 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     .map(String.class::cast)
                     .toList();
 
+            // Extract permissions from JWT
+            Set<String> permissions = Set.of();
+            if (permissionsClaim instanceof List<?> rawPermissions) {
+                permissions = rawPermissions.stream()
+                        .filter(perm -> perm instanceof String)
+                        .map(String.class::cast)
+                        .collect(java.util.stream.Collectors.toSet());
+            }
 
+            // Create JwtPrincipal with user information
+            JwtPrincipal principal = JwtPrincipal.builder()
+                    .userId(Long.parseLong(userId))
+                    .roles(roles)
+                    .permissions(permissions)
+                    .jti(jti)
+                    .build();
+
+            // Add role authorities (prefixed with ROLE_)
             List<GrantedAuthority> authorities = roles.stream()
                     .map(role -> (GrantedAuthority) new SimpleGrantedAuthority("ROLE_" + role))
-                    .toList();
+                    .collect(java.util.stream.Collectors.toList());
+
+            // Add permission authorities (as-is, e.g., "user:read", "admin:create")
+            List<GrantedAuthority> permissionAuthorities = permissions.stream()
+                    .map(perm -> (GrantedAuthority) new SimpleGrantedAuthority(perm))
+                    .collect(java.util.stream.Collectors.toList());
+
+            authorities.addAll(permissionAuthorities);
 
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(
-                            userId,
+                            principal,  // Now using JwtPrincipal instead of String userId
                             null,
                             authorities
                     );

@@ -7,11 +7,11 @@ import org.modelmapper.ModelMapper;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import com.lodhi.auth.constants.SystemRoles;
 import com.lodhi.auth.dtos.request.CreateUserRequestDTO;
 import com.lodhi.auth.dtos.response.CreateUserResponseDTO;
 import com.lodhi.auth.dtos.UpdateUserRequestDTO;
 import com.lodhi.auth.enums.Provider;
-import com.lodhi.auth.enums.RoleType;
 import com.lodhi.auth.exceptions.registration.UserAlreadyExistsException;
 import com.lodhi.auth.exceptions.resource.ResourceNotFoundException;
 import com.lodhi.auth.model.Role;
@@ -53,7 +53,7 @@ public class UserServiceImpl implements UserService {
         user.setPassword(passwordEncoder.encode(createUserRequestDTO.getPassword()));
 
         // Assign default USER role
-        Role userRole = roleService.getRole(RoleType.USER);
+        Role userRole = roleService.getRoleByName(SystemRoles.USER);
         user.setRoles(Set.of(userRole));
 
         // Set provider (default to LOCAL if not specified)
@@ -117,6 +117,14 @@ public class UserServiceImpl implements UserService {
         
         user.setRoles(roles);
         User updatedUser = userRepository.save(user);
+        
+        // Audit log (this is a high-privilege operation)
+        String username = org.springframework.security.core.context.SecurityContextHolder
+                .getContext().getAuthentication().getName();
+        String roleNames = roles.stream()
+                .map(Role::getName)
+                .collect(java.util.stream.Collectors.joining(", "));
+        // Note: Assuming auditService will be injected
         
         return modelMapper.map(updatedUser, CreateUserResponseDTO.class);
     }

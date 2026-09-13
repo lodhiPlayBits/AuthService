@@ -4,12 +4,8 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
-import com.lodhi.auth.enums.RoleType;
-
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -38,12 +34,15 @@ public class Role {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
     
-    @Enumerated(EnumType.STRING)
-    @Column(name = "role_type", nullable = false, unique = true)
-    private RoleType roleType;
+    @Column(name = "name", nullable = false, unique = true, length = 50)
+    private String name;
     
     @Column(length = 255)
     private String description;
+    
+    @Column(name = "is_system_role", nullable = false)
+    @Builder.Default
+    private boolean systemRole = false;
 
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(

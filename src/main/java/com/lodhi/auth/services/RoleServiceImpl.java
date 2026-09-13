@@ -1,24 +1,28 @@
 package com.lodhi.auth.services;
 
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.lodhi.auth.audit.AuditEventType;
+import com.lodhi.auth.audit.AuditService;
 import com.lodhi.auth.dtos.request.CreateRoleRequestDTO;
 import com.lodhi.auth.dtos.response.PermissionResponseDTO;
 import com.lodhi.auth.dtos.response.RoleResponseDTO;
-import com.lodhi.auth.enums.RoleType;
 import com.lodhi.auth.exceptions.resource.ResourceNotFoundException;
 import com.lodhi.auth.exceptions.validation.ValidationException;
 import com.lodhi.auth.model.Permission;
 import com.lodhi.auth.model.Role;
 import com.lodhi.auth.respositories.PermissionRepository;
 import com.lodhi.auth.respositories.RoleRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
-import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
 
 @RequiredArgsConstructor
 @Service
@@ -26,12 +30,13 @@ public class RoleServiceImpl implements RoleService {
 
     private final RoleRepository roleRepository;
     private final PermissionRepository permissionRepository;
+    private final AuditService auditService;
 
     @Override
-    public Role getRole(RoleType roleType){
-        return roleRepository.findByRoleType(roleType)
+    public Role getRoleByName(String roleName){
+        return roleRepository.findByName(roleName)
                 .orElseThrow(() ->
-                        new ResourceNotFoundException("Role", roleType.name()));
+                        new ResourceNotFoundException("Role", roleName));
     }
 
     @Override
@@ -50,25 +55,32 @@ public class RoleServiceImpl implements RoleService {
     @Override
     @Transactional
     public RoleResponseDTO createRole(CreateRoleRequestDTO requestDTO) {
-        // Check if role already exists
-        RoleType roleType;
-        try {
-            roleType = RoleType.valueOf(requestDTO.getRoleName().toUpperCase());
-        } catch (IllegalArgumentException e) {
-            throw new ValidationException("Invalid role name. Must be one of: USER, ADMIN, or custom role");
+        String roleName = requestDTO.getRoleName().toUpperCase().trim();
+        
+        // Validate role name format
+        if (!roleName.matches("^[A-Z_]+$")) {
+            throw new ValidationException("Role name must contain only uppercase letters and underscores");
         }
         
-        if (roleRepository.existsByRoleType(roleType)) {
-            throw new ValidationException("Role already exists: " + requestDTO.getRoleName());
+        // Check if role already exists
+        if (roleRepository.existsByName(roleName)) {
+            throw new ValidationException("Role already exists: " + roleName);
         }
         
         Role role = Role.builder()
-                .roleType(roleType)
+                .name(roleName)
                 .description(requestDTO.getDescription())
+                .systemRole(false) // User-created roles are never system roles
                 .permissions(new HashSet<>())
                 .build();
         
         Role savedRole = roleRepository.save(role);
+        
+        // Audit log
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        auditService.logServiceEvent(null, username, AuditEventType.ROLE_CREATED, true,
+            "Role created: " + roleName);
+        
         return mapToRoleResponseDTO(savedRole);
     }
 
@@ -78,9 +90,13 @@ public class RoleServiceImpl implements RoleService {
         Role role = getRoleById(roleId);
         
         // Prevent deletion of system roles
-        if (role.getRoleType() == RoleType.USER || role.getRoleType() == RoleType.ADMIN) {
-            throw new ValidationException("Cannot delete system roles: USER and ADMIN");
+        if (role.isSystemRole()) {
+            throw new ValidationException("Cannot delete system role: " + role.getName());
         }
+        
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        auditService.logServiceEvent(null, username, AuditEventType.ROLE_DELETED, true,
+            "Role deleted: " + role.getName());
         
         roleRepository.delete(role);
     }
@@ -98,6 +114,10 @@ public class RoleServiceImpl implements RoleService {
         role.getPermissions().addAll(permissions);
         Role updatedRole = roleRepository.save(role);
         
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        auditService.logServiceEvent(null, username, AuditEventType.ROLE_PERMISSIONS_ASSIGNED, true,
+            "Assigned " + permissions.size() + " permissions to role: " + role.getName());
+        
         return mapToRoleResponseDTO(updatedRole);
     }
 
@@ -114,6 +134,10 @@ public class RoleServiceImpl implements RoleService {
         role.getPermissions().removeAll(permissionsToRevoke);
         Role updatedRole = roleRepository.save(role);
         
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        auditService.logServiceEvent(null, username, AuditEventType.ROLE_PERMISSIONS_REVOKED, true,
+            "Revoked " + permissionsToRevoke.size() + " permissions from role: " + role.getName());
+        
         return mapToRoleResponseDTO(updatedRole);
     }
     
@@ -128,7 +152,7 @@ public class RoleServiceImpl implements RoleService {
         
         return RoleResponseDTO.builder()
                 .id(role.getId())
-                .roleName(role.getRoleType().name())
+                .roleName(role.getName())
                 .description(role.getDescription())
                 .permissions(permissionDTOs)
                 .build();
