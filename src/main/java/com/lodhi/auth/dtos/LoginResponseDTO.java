@@ -1,6 +1,7 @@
 package com.lodhi.auth.dtos;
 
 
+import com.lodhi.auth.dtos.response.CreateUserResponseDTO;
 import lombok.*;
 
 @NoArgsConstructor
@@ -10,7 +11,7 @@ import lombok.*;
 @Builder
 public class LoginResponseDTO {
 
-    private UserResponseDTO user;
+    private CreateUserResponseDTO user;
     private String accessToken;
     // refreshToken is NOT included - it's only in HttpOnly cookie for security
 }

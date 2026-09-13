@@ -1,7 +1,7 @@
 package com.lodhi.auth.services;
 
 import com.lodhi.auth.dtos.TokenResponse;
-import com.lodhi.auth.dtos.UserResponseDTO;
+import com.lodhi.auth.dtos.response.CreateUserResponseDTO;
 import com.lodhi.auth.model.RefreshToken;
 import com.lodhi.auth.model.User;
 import com.lodhi.auth.respositories.RefreshTokenRepository;
@@ -12,7 +12,6 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.transaction.Transactional;
-import lombok.AllArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -90,7 +89,7 @@ public class RefreshTokenService {
                 newAccessToken,
                 jwtService.getAccessTtlSeconds(),
                 "Bearer",
-                mapper.map(user, UserResponseDTO.class)
+                mapper.map(user, CreateUserResponseDTO.class)
         );
     }
 }

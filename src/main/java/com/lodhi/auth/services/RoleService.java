@@ -1,13 +1,27 @@
 package com.lodhi.auth.services;
 
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+
+import com.lodhi.auth.dtos.request.CreateRoleRequestDTO;
+import com.lodhi.auth.dtos.response.RoleResponseDTO;
 import com.lodhi.auth.enums.RoleType;
 import com.lodhi.auth.model.Role;
-import org.springframework.stereotype.Service;
-
-
 
 public interface RoleService {
 
     Role getRole(RoleType roleType);
-
+    
+    Role getRoleById(UUID roleId);
+    
+    List<RoleResponseDTO> getAllRoles();
+    
+    RoleResponseDTO createRole(CreateRoleRequestDTO requestDTO);
+    
+    void deleteRole(UUID roleId);
+    
+    RoleResponseDTO assignPermissionsToRole(UUID roleId, Set<UUID> permissionIds);
+    
+    RoleResponseDTO revokePermissionsFromRole(UUID roleId, Set<UUID> permissionIds);
 }

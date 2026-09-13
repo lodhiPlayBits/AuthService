@@ -1,17 +1,26 @@
-package com.lodhi.auth.dtos;
+package com.lodhi.auth.dtos.request;
 
 
 import com.lodhi.auth.enums.Gender;
 import com.lodhi.auth.enums.Provider;
-import jakarta.validation.constraints.*;
-import lombok.*;
+
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @NoArgsConstructor
 @AllArgsConstructor
 @Getter
 @Setter
 @Builder
-public class UserRequestDTO {
+public class CreateUserRequestDTO {
 
     @NotBlank(message = "Email is required")
     @Email(message = "Email must be valid")
@@ -22,7 +31,7 @@ public class UserRequestDTO {
     private String name;
     @NotBlank(message = "Username is required")
     @Size(min = 2, max = 100, message = "Name must be between 2 and 100 characters")
-    private String userName;
+    private String username;
 
     @NotNull(message = "Gender is required")
     private Gender gender;

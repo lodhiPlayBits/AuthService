@@ -1,23 +1,25 @@
 package com.lodhi.auth.services;
 
+import java.util.Set;
+import java.util.UUID;
+
 import com.lodhi.auth.dtos.UpdateUserRequestDTO;
-import com.lodhi.auth.dtos.UserRequestDTO;
-import com.lodhi.auth.dtos.UserResponseDTO;
+import com.lodhi.auth.dtos.request.CreateUserRequestDTO;
+import com.lodhi.auth.dtos.response.CreateUserResponseDTO;
 
 public interface UserService {
 
-    UserResponseDTO createUser(UserRequestDTO userRequestDTO);
+    CreateUserResponseDTO createUser(CreateUserRequestDTO createUserRequestDTO);
 
-    UserResponseDTO getUserByEmail(String email);
+    CreateUserResponseDTO getUserByEmail(String email);
 
-    UserResponseDTO getUserById(Long id);
+    CreateUserResponseDTO getUserById(Long id);
 
-    UserResponseDTO updateUser(UpdateUserRequestDTO updateUserRequestDTO, Long id);
+    CreateUserResponseDTO updateUser(UpdateUserRequestDTO updateUserRequestDTO, Long id);
 
     void deleteUser(Long id);
 
-    Iterable<UserResponseDTO>getAllUsers();
-
-
-
+    Iterable<CreateUserResponseDTO> getAllUsers();
+    
+    CreateUserResponseDTO assignRolesToUser(Long userId, Set<UUID> roleIds);
 }
