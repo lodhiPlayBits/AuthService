@@ -1,11 +1,12 @@
 package com.lodhi.auth.services;
 
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,22 +35,33 @@ public class RoleServiceImpl implements RoleService {
 
     @Override
     public Role getRoleByName(String roleName){
-        return roleRepository.findByName(roleName)
+        // Use fetch join to load permissions with role
+        return roleRepository.findByNameWithPermissions(roleName)
                 .orElseThrow(() ->
                         new ResourceNotFoundException("Role", roleName));
     }
 
     @Override
     public Role getRoleById(UUID roleId) {
-        return roleRepository.findById(roleId)
+        // Use fetch join to load permissions with role
+        return roleRepository.findByIdWithPermissions(roleId)
                 .orElseThrow(() -> new ResourceNotFoundException("Role", roleId));
     }
 
     @Override
-    public List<RoleResponseDTO> getAllRoles() {
-        return roleRepository.findAll().stream()
-                .map(this::mapToRoleResponseDTO)
-                .collect(Collectors.toList());
+    public Page<RoleResponseDTO> getAllRoles(Pageable pageable) {
+        // Enforce maximum page size to prevent unbounded queries
+        int maxPageSize = 100;
+        if (pageable.getPageSize() > maxPageSize) {
+            pageable = org.springframework.data.domain.PageRequest.of(
+                pageable.getPageNumber(), 
+                maxPageSize, 
+                pageable.getSort()
+            );
+        }
+        
+        Page<Role> rolePage = roleRepository.findAll(pageable);
+        return rolePage.map(this::mapToRoleResponseDTO);
     }
 
     @Override

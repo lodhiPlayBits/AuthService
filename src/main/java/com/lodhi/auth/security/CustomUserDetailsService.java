@@ -1,17 +1,18 @@
 package com.lodhi.auth.security;
 
-import com.lodhi.auth.dtos.LoginRequestDTO;
-import com.lodhi.auth.enums.IdentifiersTypes;
-import com.lodhi.auth.model.User;
-import com.lodhi.auth.respositories.UserRepository;
-import com.lodhi.auth.utils.IdentifierUtils;
-import lombok.RequiredArgsConstructor;
+import java.util.Optional;
+
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 
-import java.util.Optional;
+import com.lodhi.auth.enums.IdentifiersTypes;
+import com.lodhi.auth.model.User;
+import com.lodhi.auth.respositories.UserRepository;
+import com.lodhi.auth.utils.IdentifierUtils;
+
+import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
@@ -24,10 +25,12 @@ public class CustomUserDetailsService implements UserDetailsService {
     public UserDetails loadUserByUsername(String identifier) {
         IdentifiersTypes type = identifierUtils.resolveType(identifier);
 
+        // Use fetch join queries to eagerly load roles and permissions
+        // This prevents N+1 queries during authentication
         Optional<User> userOptional = switch (type) {
-            case EMAIL -> userRepository.findByEmail(identifier);
-            case PHONE -> userRepository.findByPhoneNumber(identifier);
-            case USERNAME -> userRepository.findByUsername(identifier);
+            case EMAIL -> userRepository.findByEmailWithRolesAndPermissions(identifier);
+            case PHONE -> userRepository.findByPhoneNumber(identifier);  // Phone login doesn't need roles immediately
+            case USERNAME -> userRepository.findByUsernameWithRolesAndPermissions(identifier);
         };
 
         User user = userOptional.orElseThrow(() -> new UsernameNotFoundException("User not found"));

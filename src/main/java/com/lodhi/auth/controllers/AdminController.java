@@ -1,6 +1,5 @@
 package com.lodhi.auth.controllers;
 
-import java.util.List;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
@@ -19,6 +18,7 @@ import com.lodhi.auth.dtos.request.AssignRolesRequestDTO;
 import com.lodhi.auth.dtos.request.CreatePermissionRequestDTO;
 import com.lodhi.auth.dtos.request.CreateRoleRequestDTO;
 import com.lodhi.auth.dtos.response.CreateUserResponseDTO;
+import com.lodhi.auth.dtos.response.PagedResponse;
 import com.lodhi.auth.dtos.response.PermissionResponseDTO;
 import com.lodhi.auth.dtos.response.RoleResponseDTO;
 import com.lodhi.auth.security.RequiresPermission;
@@ -42,8 +42,17 @@ public class AdminController {
     
     @GetMapping("/roles")
     @RequiresPermission("roles:read")
-    public ResponseEntity<List<RoleResponseDTO>> getAllRoles() {
-        return ResponseEntity.ok(roleService.getAllRoles());
+    public ResponseEntity<PagedResponse<RoleResponseDTO>> getAllRoles(
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "0") int page,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "20") int size,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "name") String sortBy) {
+        
+        org.springframework.data.domain.Pageable pageable = 
+            org.springframework.data.domain.PageRequest.of(page, size, 
+                org.springframework.data.domain.Sort.by(sortBy));
+        
+        org.springframework.data.domain.Page<RoleResponseDTO> rolesPage = roleService.getAllRoles(pageable);
+        return ResponseEntity.ok(PagedResponse.of(rolesPage));
     }
 
     @PostMapping("/roles")
@@ -79,8 +88,18 @@ public class AdminController {
 
     @GetMapping("/permissions")
     @RequiresPermission("permissions:read")
-    public ResponseEntity<List<PermissionResponseDTO>> getAllPermissions() {
-        return ResponseEntity.ok(permissionService.getAllPermissions());
+    public ResponseEntity<PagedResponse<PermissionResponseDTO>> getAllPermissions(
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "0") int page,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "20") int size,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "name") String sortBy) {
+        
+        org.springframework.data.domain.Pageable pageable = 
+            org.springframework.data.domain.PageRequest.of(page, size, 
+                org.springframework.data.domain.Sort.by(sortBy));
+        
+        org.springframework.data.domain.Page<PermissionResponseDTO> permissionsPage = 
+            permissionService.getAllPermissions(pageable);
+        return ResponseEntity.ok(PagedResponse.of(permissionsPage));
     }
 
     @PostMapping("/permissions")
@@ -97,6 +116,21 @@ public class AdminController {
     }
 
     // ==================== USER ROLE MANAGEMENT ====================
+    
+    @GetMapping("/users")
+    @RequiresPermission("users:read")
+    public ResponseEntity<PagedResponse<CreateUserResponseDTO>> getAllUsers(
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "0") int page,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "20") int size,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "id") String sortBy) {
+        
+        org.springframework.data.domain.Pageable pageable = 
+            org.springframework.data.domain.PageRequest.of(page, size, 
+                org.springframework.data.domain.Sort.by(sortBy));
+        
+        org.springframework.data.domain.Page<CreateUserResponseDTO> usersPage = userService.getAllUsers(pageable);
+        return ResponseEntity.ok(PagedResponse.of(usersPage));
+    }
 
     @PutMapping("/users/{userId}/roles")
     @RequiresPermission("users:assign-roles")

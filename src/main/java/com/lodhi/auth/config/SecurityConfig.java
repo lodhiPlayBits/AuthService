@@ -11,12 +11,13 @@ import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 
 import com.lodhi.auth.security.JwtAuthenticationFilter;
 
@@ -37,7 +38,27 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        http.csrf(AbstractHttpConfigurer::disable);
+        // Configure CSRF protection
+        // - Enabled for /api/v1/auth/refresh (uses cookie-based refresh token)
+        // - Disabled for /api/v1/auth/login and /api/v1/auth/register (stateless, bearer token only)
+        // - Disabled for other authenticated endpoints (use Authorization: Bearer header)
+        // - Disabled for /actuator/** (health checks should be stateless)
+        CsrfTokenRequestAttributeHandler requestHandler = new CsrfTokenRequestAttributeHandler();
+        requestHandler.setCsrfRequestAttributeName("_csrf");
+        
+        http.csrf(csrf -> csrf
+                .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                .csrfTokenRequestHandler(requestHandler)
+                .ignoringRequestMatchers(
+                        "/api/v1/auth/login",
+                        "/api/v1/auth/register",
+                        "/api/v1/admin/**",
+                        "/api/v1/users/**",
+                        "/actuator/**"
+                )
+                // /api/v1/auth/refresh and /api/v1/auth/logout are NOT ignored - CSRF protection is active
+        );
+        
         http.cors(Customizer.withDefaults());
         http.sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
         http.authorizeHttpRequests(auth -> auth
@@ -46,6 +67,14 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/login")
                 .permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/refresh")
+                .permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/v1/auth/logout")
+                .permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/v1/auth/logout/all")
+                .authenticated()
+                .requestMatchers("/actuator/health", "/actuator/health/**")
+                .permitAll()
+                .requestMatchers("/actuator/info")
                 .permitAll()
                 .requestMatchers("/error")
                 .permitAll()
@@ -76,32 +105,4 @@ public class SecurityConfig {
 
     }
 
-//    @Bean
-//    public SecurityFilterChain securityFilterChain(HttpSecurity http)
-//            throws Exception {
-//
-//        return http
-//                .csrf(csrf -> csrf.disable())
-//                .authorizeHttpRequests(auth -> auth
-//                        .requestMatchers("/api/v1/auth/**").permitAll()
-//                        .anyRequest().authenticated()
-//                )
-//                .build();
-//    }
-//
-
-
-
-//    @Bean
-//    public UserDetailsService users(){
-//        User.UserBuilder userBuilder=User.withDefaultPasswordEncoder();
-//
-//
-//        UserDetails user1=userBuilder.username("Gaurav").password("abc").roles("ADMIN").build();
-//        UserDetails user2=userBuilder.username("rohit").password("abc").roles("ADMIN").build();
-//        UserDetails user3=userBuilder.username("shayam").password("abc").roles("USER").build();
-//
-//        return new InMemoryUserDetailsManager(user1,user2,user3);
-//
-//    }
 }

@@ -103,6 +103,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     .jti(jti)
                     .build();
 
+            // Add user context to MDC for structured logging
+            com.lodhi.auth.utils.LoggingUtils.setUserContext(principal.getUserId(), userId);
+
             // Add role authorities (prefixed with ROLE_)
             List<GrantedAuthority> authorities = roles.stream()
                     .map(role -> (GrantedAuthority) new SimpleGrantedAuthority("ROLE_" + role))
