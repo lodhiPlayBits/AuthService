@@ -44,6 +44,7 @@ public class GlobalExceptionHandler {
         response.put("statusCode", HttpStatus.BAD_REQUEST.value());
         response.put("status", HttpStatus.BAD_REQUEST);
         response.put("errors", errors);
+        response.put("correlationId", com.lodhi.auth.utils.CorrelationIdUtils.getCurrentCorrelationId());
         
         log.warn("Validation failed: {}", errors);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);

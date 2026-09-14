@@ -44,7 +44,7 @@ public class Role {
     @Builder.Default
     private boolean systemRole = false;
 
-    @ManyToMany(fetch = FetchType.EAGER)
+    @ManyToMany(fetch = FetchType.LAZY)  // Changed from EAGER to LAZY
     @JoinTable(
             name = "role_permissions",
             joinColumns = @JoinColumn(name = "role_id", nullable = false),

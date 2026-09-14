@@ -1,0 +1,63 @@
+# =====================================================
+# Docker Compose for Auth Service
+# Uses local PostgreSQL instance on host (localhost:5432)
+# =====================================================
+
+version: '3.8'
+
+services:
+  # ===================================================
+  # Auth Service
+  # ===================================================
+  auth-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: auth-service
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      # Database - override for Docker (host.docker.internal)
+      DB_URL: jdbc:postgresql://host.docker.internal:5432/${DB_NAME:-auth_service}
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-root}
+      
+      # JWT
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ISSUER: ${JWT_ISSUER:-api.lodhi.com}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-lodhi-auth-service}
+      JWT_ACCESS_TTL_SECOND: ${JWT_ACCESS_TTL_SECOND:-3600}
+      JWT_REFRESH_TTL_SECOND: ${JWT_REFRESH_TTL_SECOND:-86400}
+      
+      # Cookie
+      JWT_COOKIE_HTTP_ONLY: ${JWT_COOKIE_HTTP_ONLY:-true}
+      JWT_COOKIE_SECURE: ${JWT_COOKIE_SECURE:-false}
+      JWT_COOKIE_SAME_SITE: ${JWT_COOKIE_SAME_SITE:-lax}
+      JWT_COOKIE_PATH: ${JWT_COOKIE_PATH:-/api/v1/auth}
+      
+      # Logging
+      LOG_LEVEL_ROOT: ${LOG_LEVEL_ROOT:-INFO}
+      LOG_LEVEL_APP: ${LOG_LEVEL_APP:-INFO}
+      LOG_LEVEL_SECURITY: ${LOG_LEVEL_SECURITY:-DEBUG}
+      
+      # Actuator
+      ACTUATOR_ENDPOINTS: ${ACTUATOR_ENDPOINTS:-health,info,metrics}
+      ACTUATOR_HEALTH_SHOW_DETAILS: ${ACTUATOR_HEALTH_SHOW_DETAILS:-when-authorized}
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./logs:/var/log/auth-service
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+# =====================================================
+# Volumes
+# =====================================================
+volumes:
+  auth-logs:
+    driver: local

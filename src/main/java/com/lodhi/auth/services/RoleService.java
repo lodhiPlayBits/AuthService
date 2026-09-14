@@ -1,8 +1,10 @@
 package com.lodhi.auth.services;
 
-import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 import com.lodhi.auth.dtos.request.CreateRoleRequestDTO;
 import com.lodhi.auth.dtos.response.RoleResponseDTO;
@@ -14,7 +16,14 @@ public interface RoleService {
     
     Role getRoleById(UUID roleId);
     
-    List<RoleResponseDTO> getAllRoles();
+    /**
+     * Get all roles with pagination support.
+     * Maximum page size is enforced to prevent unbounded queries.
+     * 
+     * @param pageable pagination parameters (page number, size, sort)
+     * @return paginated list of roles
+     */
+    Page<RoleResponseDTO> getAllRoles(Pageable pageable);
     
     RoleResponseDTO createRole(CreateRoleRequestDTO requestDTO);
     

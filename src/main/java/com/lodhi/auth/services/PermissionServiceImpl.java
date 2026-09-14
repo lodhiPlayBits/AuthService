@@ -1,9 +1,9 @@
 package com.lodhi.auth.services;
 
-import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,10 +39,19 @@ public class PermissionServiceImpl implements PermissionService {
     }
 
     @Override
-    public List<PermissionResponseDTO> getAllPermissions() {
-        return permissionRepository.findAll().stream()
-                .map(this::mapToPermissionResponseDTO)
-                .collect(Collectors.toList());
+    public Page<PermissionResponseDTO> getAllPermissions(Pageable pageable) {
+        // Enforce maximum page size to prevent unbounded queries
+        int maxPageSize = 100;
+        if (pageable.getPageSize() > maxPageSize) {
+            pageable = org.springframework.data.domain.PageRequest.of(
+                pageable.getPageNumber(), 
+                maxPageSize, 
+                pageable.getSort()
+            );
+        }
+        
+        Page<Permission> permissionPage = permissionRepository.findAll(pageable);
+        return permissionPage.map(this::mapToPermissionResponseDTO);
     }
 
     @Override

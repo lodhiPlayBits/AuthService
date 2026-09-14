@@ -64,7 +64,7 @@ public class User implements UserDetails {
     private Provider provider=Provider.LOCAL;
 
     @Column(nullable = false)
-    @ManyToMany(fetch=FetchType.EAGER)
+    @ManyToMany(fetch = FetchType.LAZY)  // Changed from EAGER to LAZY
     @JoinTable(
             name="user_roles",
             joinColumns = @JoinColumn(

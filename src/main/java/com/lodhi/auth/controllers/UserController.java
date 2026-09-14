@@ -59,4 +59,18 @@ public class UserController {
         userService.deleteUser(id);
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
     }
+    
+    /**
+     * Change password endpoint.
+     * User can only change their own password.
+     * Requires current password for verification.
+     */
+    @PostMapping("/{id}/change-password")
+    @PreAuthorize("#id == authentication.principal.userId")
+    public ResponseEntity<Void> changePassword(
+            @PathVariable Long id, 
+            @RequestBody @jakarta.validation.Valid com.lodhi.auth.dtos.ChangePasswordRequestDTO requestDTO) {
+        userService.changePassword(id, requestDTO);
+        return ResponseEntity.ok().build();
+    }
 }
