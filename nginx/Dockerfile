@@ -3,6 +3,11 @@ FROM openresty/openresty:1.25.3.1-alpine
 # Install openssl for runtime self-signed cert generation (if needed)
 RUN apk add --no-cache openssl
 
+# Create the nginx user/group — this Alpine-based OpenResty image
+# doesn't ship one by default, and nginx.conf's "user nginx;" directive
+# needs it to exist or the master process fails at startup.
+RUN adduser -D -H -u 101 -s /sbin/nologin nginx
+
 # Copy configs and lua scripts into the image (baked-in, not live-mounted)
 COPY nginx.conf /usr/local/openresty/nginx/conf/nginx.conf
 COPY conf.d/ /usr/local/openresty/nginx/conf/conf.d/
@@ -31,6 +36,8 @@ if [ ! -f /etc/nginx/ssl/dhparams.pem ]; then\n\
   echo "[entrypoint] Generating DH parameters…"\n\
   openssl dhparam -out /etc/nginx/ssl/dhparams.pem 2048\n\
 fi\n\
+# Ensure worker processes (running as nginx user) can read ssl material\n\
+chown -R nginx:nginx /etc/nginx/ssl 2>/dev/null || true\n\
 exec openresty -g "daemon off;"\n' > /docker-entrypoint.sh && chmod +x /docker-entrypoint.sh
 
 # Validate config at build time — fails the build if anything is broken.
