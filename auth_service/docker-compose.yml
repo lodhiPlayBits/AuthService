@@ -74,10 +74,15 @@ services:
       
       # Log file
       LOG_FILE: ${LOG_FILE}
-    ports:
-      - "8080:8080"
+    # Direct port access — uncomment for local dev without nginx
+    # ports:
+    #   - "8080:8080"
+    expose:
+      - "8080"
     volumes:
       - ./logs:/var/log/auth-service
+    networks:
+      - authnet
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
       interval: 30s
@@ -85,3 +90,6 @@ services:
       retries: 3
       start_period: 60s
 
+networks:
+  authnet:
+    external: true
