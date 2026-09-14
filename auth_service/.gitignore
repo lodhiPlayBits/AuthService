@@ -42,3 +42,7 @@ __pycache__/
 *.pyc
 output.json
 output.txt
+
+### Vim / Editor Swap Files ###
+*.swp
+.env*.swp
