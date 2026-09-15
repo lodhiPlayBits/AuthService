@@ -35,6 +35,9 @@ public class AdminInitializer implements CommandLineRunner {
     @Value("${admin.password:admin}")
     private String adminPassword;
 
+    @Value("${admin.phoneNumber:8595007855}")
+    private String adminPhoneNumber;
+
     @Override
     public void run(String... args) throws Exception {
 
@@ -53,7 +56,7 @@ public class AdminInitializer implements CommandLineRunner {
         admin.setName(adminUsername);
         admin.setGender(Gender.MALE);
         admin.setEnabled(true);
-        admin.setPhoneNumber("8595007855");
+        admin.setPhoneNumber(adminPhoneNumber);
         admin.setProvider(Provider.LOCAL);
 
         userRepository.save(admin);

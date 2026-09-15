@@ -83,6 +83,7 @@ admin:
   email: ${ADMIN_EMAIL:Admin@admin.com}
   username: ${ADMIN_USERNAME:Admin}
   password: ${ADMIN_PASSWORD:admin}
+  phoneNumber: ${ADMIN_PHONE:8595007855}
 
 # =====================================================
 # Logging Configuration
