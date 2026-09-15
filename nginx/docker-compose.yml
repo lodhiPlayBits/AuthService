@@ -6,7 +6,7 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      - DOMAIN=${DOMAIN:-yourdomain.com}
+      - DOMAIN=${DOMAIN:-authvolt.fun}
     volumes:
       - certbot-certs:/etc/nginx/ssl
       - certbot-webroot:/var/www/certbot
@@ -30,6 +30,8 @@ services:
   certbot:
     image: certbot/certbot
     container_name: certbot
+    depends_on:
+      - nginx
     volumes:
       - certbot-certs:/etc/letsencrypt
       - certbot-webroot:/var/www/certbot
