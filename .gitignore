@@ -5,3 +5,19 @@
 *.ipr
 *.swp
 
+<<<<<<< HEAD
+=======
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+.idea/
+>>>>>>> 9aa16b8 (stop tracking .idea)
