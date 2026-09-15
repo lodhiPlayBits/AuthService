@@ -49,6 +49,7 @@ public class RoleServiceImpl implements RoleService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Page<RoleResponseDTO> getAllRoles(Pageable pageable) {
         // Enforce maximum page size to prevent unbounded queries
         int maxPageSize = 100;
