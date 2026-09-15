@@ -74,7 +74,7 @@ public class RefreshTokenService {
         // Hash the new JTI
         String newJtiHash = tokenHashService.hashJti(newJti);
 
-        int updated = refreshTokenRepository.revokeIfActive(jti, newJti, Instant.now());
+        int updated = refreshTokenRepository.revokeIfActive(jtiHash, newJti, Instant.now());
 
         if (updated == 0) {
             // Reuse detected — this token was already consumed or expired.
