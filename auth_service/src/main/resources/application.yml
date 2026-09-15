@@ -77,6 +77,14 @@ server:
     accept-count: 100
 
 # =====================================================
+# Admin Credentials
+# =====================================================
+admin:
+  email: ${ADMIN_EMAIL:Admin@admin.com}
+  username: ${ADMIN_USERNAME:Admin}
+  password: ${ADMIN_PASSWORD:admin}
+
+# =====================================================
 # Logging Configuration
 # =====================================================
 logging:

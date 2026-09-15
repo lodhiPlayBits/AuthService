@@ -3,6 +3,7 @@ package com.lodhi.auth.initialization;
 import java.util.Set;
 
 import com.lodhi.auth.constants.SystemRoles;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
@@ -25,10 +26,19 @@ public class AdminInitializer implements CommandLineRunner {
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
 
+    @Value("${admin.email:Admin@admin.com}")
+    private String adminEmail;
+
+    @Value("${admin.username:Admin}")
+    private String adminUsername;
+
+    @Value("${admin.password:admin}")
+    private String adminPassword;
+
     @Override
     public void run(String... args) throws Exception {
 
-        if (userRepository.existsByEmail("Admin@admin.com")) {
+        if (userRepository.existsByEmail(adminEmail)) {
             return;
         }
 
@@ -36,11 +46,11 @@ public class AdminInitializer implements CommandLineRunner {
 
         User admin=new User();
 
-        admin.setUsername("Admin");
-        admin.setEmail("Admin@admin.com");
-        admin.setPassword(passwordEncoder.encode("admin"));
+        admin.setUsername(adminUsername);
+        admin.setEmail(adminEmail);
+        admin.setPassword(passwordEncoder.encode(adminPassword));
         admin.setRoles(Set.of(adminRole));
-        admin.setName("Admin");
+        admin.setName(adminUsername);
         admin.setGender(Gender.MALE);
         admin.setEnabled(true);
         admin.setPhoneNumber("8595007855");
