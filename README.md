@@ -540,7 +540,7 @@ docker compose logs -f
 
 ---
 
-# 🧪 Testing
+#  Testing
 
 Run the complete test suite:
 
@@ -569,7 +569,7 @@ The test suite includes:
 
 ---
 
-# 🐳 Docker
+#  Docker
 
 Build and start the complete stack:
 
@@ -606,7 +606,7 @@ PostgreSQL / RDS
 
 ---
 
-# ☁️ Production Deployment
+#  Production Deployment
 
 The service can be deployed using:
 
@@ -718,45 +718,9 @@ Potential improvements include:
 * Automated CI/CD deployment pipeline
 * Secret management through a dedicated secret-management system
 
----
 
-# 📜 License
 
-This project is licensed under the **MIT License**.
-
-You are free to use, modify, distribute, and sublicense this software, subject to the terms of the license.
-
-See the [`LICENSE`](LICENSE) file for the complete license text.
-
-## MIT License
-
-```text
-MIT License
-
-Copyright (c) 2026 Gaurav Lodhi
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
----
-
-# 👤 Author
+#  Author
 
 **Gaurav Lodhi**
 
@@ -764,7 +728,7 @@ Backend / Software Engineer focused on Java, Spring Boot, distributed systems, d
 
 ---
 
-## ⭐ Project
+## Project
 
 If you find the project useful, consider giving it a star.
 
