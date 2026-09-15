@@ -1,0 +1,13 @@
+services:
+  client-service:
+    build: .
+    container_name: client-service
+    networks:
+      - authnet
+    restart: unless-stopped
+    # No ports are exposed publicly here! 
+    # The main Nginx gateway on the authnet network will proxy traffic to port 80 internally.
+
+networks:
+  authnet:
+    external: true

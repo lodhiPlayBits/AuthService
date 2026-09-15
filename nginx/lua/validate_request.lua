@@ -44,9 +44,10 @@ end
 -- This is a cheap presence/format check only — Spring Security
 -- still does the real signature + claims verification.
 local uri = ngx.var.uri
-local is_public = string.find(uri, "^/api/auth/login")
-                  or string.find(uri, "^/api/auth/register")
-                  or string.find(uri, "^/api/auth/refresh")
+local is_public =
+    string.find(uri, "^/api/v1/auth/login/?$") ~= nil
+    or string.find(uri, "^/api/v1/auth/register/?$") ~= nil
+    or string.find(uri, "^/api/v1/auth/refresh/?$") ~= nil
 
 if not is_public then
     local auth_header = ngx.req.get_headers()["authorization"]

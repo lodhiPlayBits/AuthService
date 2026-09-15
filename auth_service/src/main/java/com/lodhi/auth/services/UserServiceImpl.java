@@ -8,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.lodhi.auth.constants.SystemRoles;
 import com.lodhi.auth.dtos.ChangePasswordRequestDTO;
@@ -88,6 +89,7 @@ public class UserServiceImpl implements UserService {
         }
     }
 
+    @Transactional(readOnly = true)
     @Override
     public CreateUserResponseDTO getUserByEmail(String email) {
         User user = userRepository.findByEmail(email)
@@ -95,6 +97,7 @@ public class UserServiceImpl implements UserService {
         return modelMapper.map(user, CreateUserResponseDTO.class);
     }
 
+    @Transactional(readOnly = true)
     @Override
     public CreateUserResponseDTO getUserById(Long id) {
         User user = userRepository.findById(id)
