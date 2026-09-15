@@ -23,7 +23,7 @@ import lombok.Setter;
 
 public class CreateUserResponseDTO {
 
-    private Long Id;
+    private Long id;
 
     private String email;
 
