@@ -1,118 +1,170 @@
 # AuthService
 
-AuthService is a production-grade authentication and authorization microservice designed to provide secure, robust identity management for distributed applications. It handles user registration, login, role-based access control (RBAC), and session management via JWT with refresh token rotation. Intended for enterprise environments, it ensures high performance and security through strict rate limiting, connection management, and comprehensive structured logging.
+A Spring Boot authentication and authorization microservice: JWT-based login with refresh token rotation, role/permission-based access control (RBAC), and an Nginx/OpenResty gateway in front of it handling TLS, per-endpoint rate limiting, and request validation.
 
 ## Tech Stack
 
 **Backend**
-*   **Language:** Java 21
-*   **Framework:** Spring Boot
-*   **Authentication:** JWT (JSON Web Tokens) with refresh token rotation
+- Java 21
+- Spring Boot (Spring Security, Spring Data JPA)
+- JWT access + refresh tokens, refresh token rotation and family revocation
+- Flyway for schema migrations
+- Maven (`mvnw` included, no Gradle build)
 
 **Database**
-*   **Relational Database:** PostgreSQL (managed via AWS RDS)
+- PostgreSQL, HikariCP connection pooling (pool size and timeouts configurable via env vars)
 
-**Gateway & Infrastructure**
-*   **Reverse Proxy / API Gateway:** OpenResty (Nginx)
-*   **Request Validation:** Lua-based scripting in OpenResty
-*   **Security:** HTTPS enabled via Let's Encrypt
-*   **Deployment:** AWS EC2 + RDS
+**Gateway**
+- OpenResty (Nginx + Lua)
+- Lua-based request validation (`access_by_lua_file`)
+- Per-route rate limiting: strict limits on `/auth/login`, `/auth/register`, `/auth/refresh`; looser general-API limit elsewhere
+- Connection limiting (slow-loris mitigation)
+- TLS via Let's Encrypt (with a self-signed fallback for local/dev)
 
-## Key Features
-
-*   **Secure Authentication Flow:** Robust JWT-based authentication featuring short-lived access tokens and secure refresh token rotation to mitigate token theft.
-*   **Advanced Rate Limiting:** Granular, per-endpoint rate limiting implemented at the OpenResty layer. Strict limits are enforced on critical endpoints (e.g., login, register, refresh), while general API routes have more permissive thresholds.
-*   **Role-Based Access Control (RBAC):** Comprehensive role and permission management system enabling fine-grained access control for administrative and user actions.
-*   **User Management:** Full lifecycle management for user accounts.
-*   **Resilience & Protection:** Connection limiting and Lua-based request validation prevent abuse and overload.
-*   **Observability:** End-to-end correlation ID logging for seamless request tracing, coupled with structured exception handling for clear, actionable error reporting.
+**Testing**
+- JUnit 5, Spring Boot Test, integration tests against a real Spring context and DB
+- JaCoCo for coverage reporting
 
 ## Architecture
 
-```text
-+--------+       HTTPS      +--------------------+       HTTP        +-----------------+
-|        | ---------------->|                    | ----------------> |                 |
-| Client |                  | OpenResty (Nginx)  |                   |  AuthService    |
-|        | <----------------| (Rate Limiting,    | <---------------- |  (Spring Boot)  |
-+--------+                  |  Lua Validation)   |                   +-----------------+
-                                                                             |
-                                                                             | TCP
-                                                                             v
-                                                                     +-----------------+
-                                                                     |                 |
-                                                                     | PostgreSQL (RDS)|
-                                                                     |                 |
-                                                                     +-----------------+
 ```
+                         ┌─────────────────────────────────────────────┐
+                         │              OpenResty / Nginx               │
+  Client ── HTTPS ──────▶│  TLS termination                             │
+                         │  Lua request validation (access_by_lua_file) │
+                         │  Rate limiting (per-route, per-IP)           │
+                         │  Connection limiting                         │
+                         └───────────────────┬───────────────────────────┘
+                                              │ HTTP (internal)
+                                              ▼
+                         ┌─────────────────────────────────────────────┐
+                         │              AuthService (Spring Boot)       │
+                         │                                               │
+                         │  Filters        JwtAuthenticationFilter,     │
+                         │                 LoggingFilter (correlation   │
+                         │                 ID injection)                │
+                         │                       │                      │
+                         │  Controllers    AuthController                │
+                         │                 UserController                │
+                         │                 AdminController                │
+                         │                       │                      │
+                         │  Services       AuthService, UserService,    │
+                         │                 RoleService, PermissionService│
+                         │                 RefreshTokenService           │
+                         │                       │                      │
+                         │  Security       JwtService, CookieService,   │
+                         │                 CustomUserDetailsService      │
+                         │                       │                      │
+                         │  Repositories   UserRepository,               │
+                         │                 TokenRepository, ...          │
+                         └───────────────────────┬───────────────────────┘
+                                                  │ JDBC
+                                                  ▼
+                                     ┌───────────────────────┐
+                                     │   PostgreSQL (RDS)     │
+                                     └───────────────────────┘
+```
+
+## Key Features
+
+- **JWT auth with refresh rotation** — short-lived access tokens, rotating refresh tokens, and refresh token *family* revocation (a compromised/reused refresh token invalidates the whole chain, not just itself).
+- **RBAC** — fine-grained permissions (`admin:create`, `user:update`, etc.) enforced with `@PreAuthorize`, including ownership checks (e.g., a user can update their own record without an admin permission).
+- **Gateway-level protection** — rate limiting and request validation happen at Nginx/Lua before a request ever reaches the JVM.
+- **Correlation ID logging** — every request is tagged for end-to-end tracing across filters, services, and logs.
+- **Admin bootstrap** — an initial admin user/role/permission set is created on startup (`AdminInitializer`), configured via env vars, not hardcoded.
 
 ## Prerequisites
 
-*   Java 21 or higher
-*   Docker & Docker Compose (for local development and infrastructure)
-*   Maven or Gradle (depending on the build tool used)
-*   PostgreSQL 15+ (if running locally without Docker)
+- Java 21
+- Maven (or use the bundled `./mvnw`)
+- Docker & Docker Compose (for running Postgres + Nginx locally)
+- PostgreSQL 15+ if not using Docker
 
-## Setup & Run Instructions
+## Environment Variables
 
-### Environment Variables
+Copy `.env.example` to `.env` and fill in real values. **Never commit `.env` or any file containing real secrets.**
 
-The application requires several environment variables to be set. **Do not commit actual secrets to version control.**
+| Variable | Purpose |
+|---|---|
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` | Postgres connection |
+| `ADMIN_EMAIL`, `ADMIN_USERNAME`, `ADMIN_PASSWORD` | Bootstrap admin account created on first startup |
+| `JWT_SECRET`, `JWT_ISSUER`, `JWT_AUDIENCE` | Token signing and validation |
+| `JWT_ACCESS_TTL_SECOND`, `JWT_REFRESH_TTL_SECOND` | Token lifetimes |
+| `JWT_REFRESH_TOKEN_COOKIE_NAME`, `JWT_COOKIE_HTTP_ONLY`, `JWT_COOKIE_SECURE`, `JWT_COOKIE_SAME_SITE`, `JWT_COOKIE_DOMAIN`, `JWT_COOKIE_PATH` | Refresh token cookie config |
+| `HIKARI_MAX_POOL_SIZE`, `HIKARI_MIN_IDLE`, `HIKARI_CONNECTION_TIMEOUT`, `HIKARI_IDLE_TIMEOUT`, `HIKARI_MAX_LIFETIME`, `HIKARI_LEAK_DETECTION_THRESHOLD` | Connection pool tuning |
+| `SERVER_PORT`, `SERVER_CONNECTION_TIMEOUT` | Server config |
+| `QUERY_TIMEOUT`, `LOCK_TIMEOUT` | DB query safety limits |
+| `JPA_SHOW_SQL`, `JPA_FORMAT_SQL` | Hibernate SQL logging (dev only) |
+| `LOG_LEVEL_*` | Per-package log verbosity |
+| `ACTUATOR_ENDPOINTS`, `ACTUATOR_HEALTH_SHOW_DETAILS` | Spring Actuator exposure |
+| `LOG_FILE` | Log output path |
 
-*   `DB_HOST`
-*   `DB_PORT`
-*   `DB_NAME`
-*   `DB_USER`
-*   `DB_PASSWORD`
-*   `JWT_SECRET`
-*   `JWT_ACCESS_EXPIRATION`
-*   `JWT_REFRESH_EXPIRATION`
-*   `SPRING_PROFILES_ACTIVE`
-
-### Running via Docker Compose
-
-To spin up the entire stack locally (OpenResty, AuthService, and a local PostgreSQL instance):
-
-1.  Clone the repository.
-2.  Ensure your `.env` file is populated with appropriate local values.
-3.  Run the following command from the project root:
+## Running Locally
 
 ```bash
+git clone https://github.com/lodhiPlayBits/AuthService.git
+cd AuthService/auth_service
+cp .env.example .env   # fill in real values
 docker-compose up --build -d
+```
+
+To run the service directly (without Docker), start Postgres separately, then:
+
+```bash
+./mvnw spring-boot:run
 ```
 
 ## API Endpoints
 
+**Auth** — `/api/v1/auth`
+
 | Method | Path | Description | Auth Required |
-| :--- | :--- | :--- | :--- |
-| `POST` | `/api/v1/auth/register` | Register a new user | No |
-| `POST` | `/api/v1/auth/login` | Authenticate user and return JWTs | No |
-| `POST` | `/api/v1/auth/refresh` | Issue new access token using refresh token | Yes (Refresh) |
-| `POST` | `/api/v1/auth/logout` | Invalidate user session/tokens | Yes |
-| `GET` | `/api/v1/users/me` | Get current authenticated user details | Yes |
-| `GET` | `/api/v1/admin/users` | List all users (paginated) | Yes (Admin) |
-| `PUT` | `/api/v1/admin/users/{id}/roles`| Update user roles | Yes (Admin) |
+|---|---|---|---|
+| POST | `/login` | Authenticate, issue access + refresh tokens | No |
+| POST | `/register` | Register a new user | No |
+| POST | `/refresh` | Rotate refresh token, issue new access token | Refresh cookie |
+| POST | `/logout` | Revoke current refresh token | Yes |
+| POST | `/logout/all` | Revoke all refresh tokens for the user (all devices) | Yes |
+
+**Users** — `/api/v1/users`
+
+| Method | Path | Description | Permission |
+|---|---|---|---|
+| POST | `/create-user` | Create a user | `admin:create` |
+| GET | `/getByEmail` | Look up a user by email | `admin:read` or `user:read` |
+| GET | `/{id}` | Get user by ID | `admin:read`, or `user:read` + self |
+| PUT | `/{id}` | Update user | `admin:update`, or `user:update` + self |
+| DELETE | `/{id}` | Delete user | `admin:delete`, or `user:delete` + self |
+| POST | `/{id}/change-password` | Change password | self only |
+
+**Admin** — `/api/v1/admin`
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/roles` | List roles |
+| POST | `/roles` | Create role |
+| DELETE | `/roles/{roleId}` | Delete role |
+| POST | `/roles/{roleId}/permissions` | Assign permissions to role |
+| DELETE | `/roles/{roleId}/permissions` | Revoke permissions from role |
+| GET | `/permissions` | List permissions |
+| POST | `/permissions` | Create permission |
+| DELETE | `/permissions/{permissionId}` | Delete permission |
+| GET | `/users` | List users |
+| PUT | `/users/{userId}/roles` | Assign roles to user |
 
 ## Testing
-
-The project uses JUnit 5 and Testcontainers for integration testing.
-
-To execute the test suite:
 
 ```bash
 ./mvnw clean test
 ```
-*(or `./gradlew test` if using Gradle)*
 
-Test coverage reports (e.g., JaCoCo) will be generated in `target/site/jacoco/index.html`.
+Coverage report (JaCoCo):
 
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+```bash
+./mvnw clean test
+# open target/site/jacoco/index.html
+```
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+No license file is currently included — all rights reserved by default. Add a `LICENSE` file if you intend this to be reused by others.
