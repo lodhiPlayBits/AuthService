@@ -1,0 +1,42 @@
+#development version of configreation
+server:
+  port: 8081
+
+
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5433/auth_service
+    username: postgres
+    password: root
+
+  jpa:
+    database: POSTGRESQL
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    show-sql: true
+    open-in-view: false
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: true
+        use_sql_comments: true
+
+logging:
+  level:
+    org.springframework.security: DEBUG
+    org.springframework.security.web: DEBUG
+
+
+security:
+  jwt:
+    secret: ${JWT_SECRET:sdoighweoihgpiowroewhighiperiowiowhoigowrh8ogerthogv}
+    issuer: ${JWT_ISSUER:api.lodhi.com}
+    access-ttl-second: ${JWT_ACCESS_TTL_SECOND:3600}
+    refresh-ttl-second: ${JWT_REFRESH_TTL_SECOND:86400}
+    refresh-cookie-name: ${JWT_REFRESH_TOKEN_COOKIE_NAME:refreshToken}
+    cookie-http-only: ${JWT_COOKIE_HTTP_ONLY:true}
+    cookie-secure: ${JWT_COOKIE_SECURE:false}
+    cookie-same-site: ${JWT_COOKIE_SAME_SITE:lax}
+    cookie-domain: ${JWT_COOKIE_DOMAIN:}
+

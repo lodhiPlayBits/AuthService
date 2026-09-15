@@ -1,0 +1,32 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL
+    username: sa
+    password: 
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    database: H2
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  flyway:
+    enabled: false # disable flyway for h2 to avoid postgresql specific syntax issues
+
+security:
+  jwt:
+    secret: "test-secret-key-must-be-at-least-32-bytes-long-for-hmac-sha256"
+    issuer: "test-issuer"
+    audience: "test-audience"
+    access-ttl-second: 3600
+    refresh-ttl-second: 86400
+    refresh-cookie-name: refreshToken
+    cookie-http-only: true
+    cookie-secure: false
+    cookie-same-site: lax
+    cookie-domain: localhost

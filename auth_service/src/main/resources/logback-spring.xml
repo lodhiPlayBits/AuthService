@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- Import Spring Boot defaults -->
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    
+    <!-- Properties for log file locations -->
+    <property name="LOG_FILE" value="${LOG_FILE:-${LOG_PATH:-${LOG_TEMP:-${java.io.tmpdir:-/tmp}}}/auth-service.log}"/>
+    <property name="LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"/>
+    
+    <!-- Console Appender for Development (Human-readable) -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+    
+    <!-- Default configuration (always active) -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+        <!-- Console Appender with JSON format -->
+        <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                <!-- Custom fields added to every log -->
+                <customFields>{"service":"auth-service","environment":"${spring.profiles.active}"}</customFields>
+                
+                <!-- Include MDC (Mapped Diagnostic Context) -->
+                <includeMdc>true</includeMdc>
+                
+                <!-- Include context name -->
+                <includeContext>true</includeContext>
+                
+                <!-- Include caller data (file, line, method) - disable in prod for performance -->
+                <includeCallerData>false</includeCallerData>
+                
+                <!-- Include stack trace -->
+                <includeStackTrace>true</includeStackTrace>
+                
+                <!-- Shorten logger names -->
+                <shortenedLoggerNameLength>36</shortenedLoggerNameLength>
+            </encoder>
+        </appender>
+        
+        <!-- File Appender with JSON format and rotation -->
+        <appender name="JSON_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${LOG_FILE}</file>
+            
+            <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+                <!-- Rollover daily -->
+                <fileNamePattern>${LOG_FILE}.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
+                <!-- Each file should be at most 100MB -->
+                <maxFileSize>100MB</maxFileSize>
+                <!-- Keep 30 days worth of history -->
+                <maxHistory>30</maxHistory>
+                <!-- Total size of all archive files -->
+                <totalSizeCap>5GB</totalSizeCap>
+            </rollingPolicy>
+            
+            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                <customFields>{"service":"auth-service","environment":"${spring.profiles.active}"}</customFields>
+                <includeMdc>true</includeMdc>
+                <includeContext>true</includeContext>
+                <includeCallerData>false</includeCallerData>
+                <includeStackTrace>true</includeStackTrace>
+                <shortenedLoggerNameLength>36</shortenedLoggerNameLength>
+            </encoder>
+        </appender>
+        
+    <!-- Application-specific loggers -->
+    <logger name="com.lodhi.auth" level="INFO"/>
+    <logger name="com.lodhi.auth.security" level="DEBUG"/>
+    <logger name="com.lodhi.auth.audit" level="INFO"/>
+    
+    <!-- Third-party loggers -->
+    <logger name="org.springframework.security" level="WARN"/>
+    <logger name="org.springframework.web" level="WARN"/>
+    <logger name="org.hibernate" level="WARN"/>
+    <logger name="org.hibernate.SQL" level="DEBUG"/>
+    <logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="TRACE"/>
+    
+    <!-- Reduce HikariCP noise -->
+    <logger name="com.zaxxer.hikari" level="INFO"/>
+</configuration>
