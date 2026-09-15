@@ -23,7 +23,7 @@ RUN chmod +x /usr/local/openresty/nginx/ssl/generate-self-signed.sh
 # then start OpenResty.
 RUN printf '#!/bin/sh\n\
 set -e\n\
-DOMAIN="${DOMAIN:-yourdomain.com}"\n\
+DOMAIN="${DOMAIN:-authvolt.fun}"\n\
 CERT_DIR="/etc/nginx/ssl/live/${DOMAIN}"\n\
 if [ ! -f "${CERT_DIR}/fullchain.pem" ] || [ ! -f "${CERT_DIR}/privkey.pem" ]; then\n\
   echo "[entrypoint] No certs found for ${DOMAIN} — generating self-signed…"\n\

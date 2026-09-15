@@ -17,7 +17,7 @@
 
 set -e
 
-DOMAIN="${DOMAIN:-yourdomain.com}"
+DOMAIN="${DOMAIN:-authvolt.fun}"
 SSL_DIR="${SSL_DIR:-/etc/nginx/ssl}"
 CERT_DIR="${SSL_DIR}/live/${DOMAIN}"
 DH_PARAMS="${SSL_DIR}/dhparams.pem"

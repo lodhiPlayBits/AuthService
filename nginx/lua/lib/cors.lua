@@ -22,10 +22,10 @@ local _M = {}
 -- Use "*" (as the sole entry) to allow any origin — only suitable
 -- for fully public APIs.
 local ALLOWED_ORIGINS = {
-    -- "https://yourdomain.com",
-    -- "https://app.yourdomain.com",
-    -- "http://localhost:3000",   -- local frontend dev
-    "*",  -- allow all origins (change this in production!)
+    "https://authvolt.fun",
+    "https://www.authvolt.fun",
+    "http://localhost:5173",    -- local Vite dev server
+    -- "*",  -- allow all origins (DO NOT use in production!)
 }
 
 local ALLOWED_METHODS  = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
