@@ -85,7 +85,12 @@ Every request can be traced through the gateway, filters, services, and database
 
 ---
 
-# 🏗️ Architecture
+# Architecture
+
+<img width="3340" height="1930" alt="image" src="https://github.com/user-attachments/assets/c780f2cf-97eb-4a8e-bdd5-38a8a959c738" />
+
+
+
 
 ```text
                          ┌──────────────────────────────────────┐
