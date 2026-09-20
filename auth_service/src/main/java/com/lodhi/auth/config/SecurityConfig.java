@@ -56,7 +56,7 @@ public class SecurityConfig {
                         "/api/v1/users/**",
                         "/actuator/**"
                 )
-                // /api/v1/auth/refresh and /api/v1/auth/logout are NOT ignored - CSRF protection is active
+                // /api/v1/auth/refresh and /api/v1/auth/logout REQUIRE CSRF - they use cookies
         );
         
         http.cors(Customizer.withDefaults());
