@@ -18,8 +18,11 @@ import com.lodhi.auth.respositories.UserRepository;
 import lombok.RequiredArgsConstructor;
 
 
+import org.springframework.context.annotation.Profile;
+
 @RequiredArgsConstructor
 @Component
+@Profile("!test")
 public class AdminInitializer implements CommandLineRunner {
 
     private final UserRepository userRepository;

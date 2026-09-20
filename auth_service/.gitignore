@@ -24,6 +24,7 @@ target/
 *.iws
 *.iml
 *.ipr
+.*swp
 
 ### NetBeans ###
 /nbproject/private/
@@ -46,3 +47,4 @@ output.txt
 ### Vim / Editor Swap Files ###
 *.swp
 .env*.swp
+.idea/
