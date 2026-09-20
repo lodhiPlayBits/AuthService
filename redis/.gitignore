@@ -1,0 +1,27 @@
+# Environment files
+.env
+
+# Redis data and backups
+data/
+backups/
+logs/
+
+# RDB and AOF files (if running locally)
+*.rdb
+*.aof
+nodes.conf
+
+# Temporary files
+*.tmp
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
