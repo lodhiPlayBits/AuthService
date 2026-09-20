@@ -3,3 +3,11 @@
 *.iws
 *.iml
 *.ipr
+
+### Vim ###
+*.swp
+*.swo
+
+### Environment Files ###
+.env
+.env.*
