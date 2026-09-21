@@ -11,3 +11,5 @@
 ### Environment Files ###
 .env
 .env.*
+
+loadtest/
