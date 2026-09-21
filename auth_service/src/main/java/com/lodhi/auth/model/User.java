@@ -2,6 +2,8 @@ package com.lodhi.auth.model;
 
 import com.lodhi.auth.enums.Gender;
 import com.lodhi.auth.enums.Provider;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import java.util.LinkedHashSet;
 
 import jakarta.persistence.*;
 import lombok.*;
@@ -77,6 +79,7 @@ public class User implements UserDetails {
             )
 
     )
+    @JsonDeserialize(as=LinkedHashSet.class)
     private Set<Role> roles=new HashSet<>();
 
     @PrePersist

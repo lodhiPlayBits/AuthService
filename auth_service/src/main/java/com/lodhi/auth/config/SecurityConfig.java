@@ -78,6 +78,8 @@ public class SecurityConfig {
                 .permitAll()
                 .requestMatchers("/error")
                 .permitAll()
+                .requestMatchers("/actuator/**")
+                .permitAll()
                 .anyRequest()
                 .authenticated()
         );

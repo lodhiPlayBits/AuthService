@@ -50,7 +50,6 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
-    @Transactional
     public LoginResponseDTO login(LoginRequestDTO loginRequestDTO, HttpServletResponse response, HttpServletRequest request) {
         try {
             Authentication authentication = authenticationManager.authenticate(

@@ -15,7 +15,14 @@ import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSeriali
 import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Redis Configuration for Caching and Data Storage
@@ -59,10 +66,6 @@ public class RedisConfig {
         return new LettuceConnectionFactory(config);
     }
 
-    /**
-     * RedisTemplate for manual Redis operations
-     * Uses String serializer for keys and JSON for values
-     */
     @Bean
     public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory) {
         RedisTemplate<String, Object> template = new RedisTemplate<>();
@@ -74,7 +77,12 @@ public class RedisConfig {
         template.setHashKeySerializer(stringSerializer);
         
         // JSON serializer for values
-        GenericJackson2JsonRedisSerializer jsonSerializer = new GenericJackson2JsonRedisSerializer();
+        ObjectMapper objectMapper = new ObjectMapper();
+        objectMapper.registerModule(new JavaTimeModule());
+        objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        objectMapper.activateDefaultTyping(objectMapper.getPolymorphicTypeValidator(), ObjectMapper.DefaultTyping.NON_FINAL, JsonTypeInfo.As.PROPERTY);
+        
+        GenericJackson2JsonRedisSerializer jsonSerializer = new GenericJackson2JsonRedisSerializer(objectMapper);
         template.setValueSerializer(jsonSerializer);
         template.setHashValueSerializer(jsonSerializer);
         
@@ -82,23 +90,34 @@ public class RedisConfig {
         return template;
     }
 
-    /**
-     * Cache Manager for Spring Cache annotations (@Cacheable, @CacheEvict, etc.)
-     */
     @Bean
     public CacheManager cacheManager(RedisConnectionFactory connectionFactory) {
-        RedisCacheConfiguration config = RedisCacheConfiguration.defaultCacheConfig()
-                .entryTtl(Duration.ofMillis(cacheTtl))
-                .serializeKeysWith(
-                        RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer())
-                )
-                .serializeValuesWith(
-                        RedisSerializationContext.SerializationPair.fromSerializer(new GenericJackson2JsonRedisSerializer())
-                )
-                .disableCachingNullValues();
+        ObjectMapper objectMapper = new ObjectMapper();
+        objectMapper.registerModule(new JavaTimeModule());
+        objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        objectMapper.activateDefaultTyping(objectMapper.getPolymorphicTypeValidator(), ObjectMapper.DefaultTyping.NON_FINAL, JsonTypeInfo.As.PROPERTY);
+        
+        GenericJackson2JsonRedisSerializer jsonSerializer = new GenericJackson2JsonRedisSerializer(objectMapper);
+        
+        RedisCacheConfiguration defaultConfig = RedisCacheConfiguration.defaultCacheConfig()
+                .entryTtl(Duration.ofMinutes(10L))
+                .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
+                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(jsonSerializer))
+                .disableCachingNullValues()
+                .prefixCacheNameWith("auth:");
+
+        Map<String, RedisCacheConfiguration> cacheConfigs = new HashMap<>();
+        cacheConfigs.put("users", defaultConfig.entryTtl(Duration.ofMinutes(5L)).prefixCacheNameWith("auth:users:"));
+        cacheConfigs.put("users:email", defaultConfig.entryTtl(Duration.ofMinutes(5L)).prefixCacheNameWith("auth:users:email:"));
+        cacheConfigs.put("user-permissions", defaultConfig.entryTtl(Duration.ofMinutes(10L)).prefixCacheNameWith("auth:perms:"));
+        cacheConfigs.put("roles", defaultConfig.entryTtl(Duration.ofHours(1L)).prefixCacheNameWith("auth:roles:"));
+        cacheConfigs.put("roles:all", defaultConfig.entryTtl(Duration.ofHours(1L)).prefixCacheNameWith("auth:roles:all:"));
+        cacheConfigs.put("permissions", defaultConfig.entryTtl(Duration.ofHours(1L)).prefixCacheNameWith("auth:permissions:"));
+        cacheConfigs.put("permissions:all", defaultConfig.entryTtl(Duration.ofHours(1L)).prefixCacheNameWith("auth:permissions:all:"));
 
         return RedisCacheManager.builder(connectionFactory)
-                .cacheDefaults(config)
+                .cacheDefaults(defaultConfig)
+                .withInitialCacheConfigurations(cacheConfigs)
                 .transactionAware()
                 .build();
     }
