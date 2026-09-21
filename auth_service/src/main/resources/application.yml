@@ -59,6 +59,7 @@ spring:
       hibernate:
         format_sql: ${JPA_FORMAT_SQL:false}
         use_sql_comments: false
+        connection.handling_mode: DELAYED_ACQUISITION_AND_RELEASE_AFTER_STATEMENT
         # Query timeout settings
         jakarta.persistence.query.timeout: ${QUERY_TIMEOUT:10000}
         jakarta.persistence.lock.timeout: ${LOCK_TIMEOUT:5000}

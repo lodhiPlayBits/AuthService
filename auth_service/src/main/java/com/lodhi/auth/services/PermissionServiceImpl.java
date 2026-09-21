@@ -5,6 +5,9 @@ import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,18 +30,21 @@ public class PermissionServiceImpl implements PermissionService {
     private final AuditService auditService;
 
     @Override
+    @Cacheable(value={"permissions"}, key="#name")
     public Permission getPermissionByName(String name) {
         return permissionRepository.findByName(name)
                 .orElseThrow(() -> new ResourceNotFoundException("Permission", name));
     }
 
     @Override
+    @Cacheable(value={"permissions"}, key="#id")
     public Permission getPermissionById(UUID id) {
         return permissionRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Permission", id));
     }
 
     @Override
+    @Cacheable(value={"permissions:all"})
     public Page<PermissionResponseDTO> getAllPermissions(Pageable pageable) {
         // Enforce maximum page size to prevent unbounded queries
         int maxPageSize = 100;
@@ -56,6 +62,7 @@ public class PermissionServiceImpl implements PermissionService {
 
     @Override
     @Transactional
+    @Caching(evict={@CacheEvict(value={"permissions"}, allEntries=true), @CacheEvict(value={"permissions:all"}, allEntries=true)})
     public PermissionResponseDTO createPermission(CreatePermissionRequestDTO requestDTO) {
         if (permissionRepository.existsByName(requestDTO.getName())) {
             throw new ValidationException("Permission already exists: " + requestDTO.getName());
@@ -76,6 +83,7 @@ public class PermissionServiceImpl implements PermissionService {
 
     @Override
     @Transactional
+    @Caching(evict={@CacheEvict(value={"permissions"}, key="#id"), @CacheEvict(value={"permissions:all"}, allEntries=true), @CacheEvict(value={"user-permissions"}, allEntries=true), @CacheEvict(value={"roles"}, allEntries=true)})
     public void deletePermission(UUID id) {
         if (!permissionRepository.existsById(id)) {
             throw new ResourceNotFoundException("Permission", id);

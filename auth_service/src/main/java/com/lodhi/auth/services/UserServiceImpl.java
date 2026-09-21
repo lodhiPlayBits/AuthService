@@ -7,6 +7,9 @@ import org.modelmapper.ModelMapper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -91,6 +94,7 @@ public class UserServiceImpl implements UserService {
 
     @Transactional(readOnly = true)
     @Override
+    @Cacheable(value={"users:email"}, key="#email")
     public CreateUserResponseDTO getUserByEmail(String email) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("User", email));
@@ -99,6 +103,7 @@ public class UserServiceImpl implements UserService {
 
     @Transactional(readOnly = true)
     @Override
+    @Cacheable(value={"users"}, key="#id")
     public CreateUserResponseDTO getUserById(Long id) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User", id));
@@ -106,6 +111,8 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional
+    @Caching(evict={@CacheEvict(value={"users"}, key="#id"), @CacheEvict(value={"user-permissions"}, key="#id")})
     public CreateUserResponseDTO updateUser(UpdateUserRequestDTO updateUserRequestDTO, Long id) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User", id));
@@ -131,6 +138,8 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional
+    @Caching(evict={@CacheEvict(value={"users"}, key="#id"), @CacheEvict(value={"users:email"}, allEntries=true), @CacheEvict(value={"user-permissions"}, key="#id")})
     public void deleteUser(Long id) {
         if (!userRepository.existsById(id)) {
             throw new ResourceNotFoundException("User", id);
@@ -139,6 +148,8 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional
+    @CacheEvict(value={"users"}, key="#userId")
     public void changePassword(Long userId, ChangePasswordRequestDTO requestDTO) {
         // Validate passwords match
         if (!requestDTO.getNewPassword().equals(requestDTO.getConfirmPassword())) {
@@ -184,6 +195,8 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional
+    @Caching(evict={@CacheEvict(value={"users"}, key="#userId"), @CacheEvict(value={"user-permissions"}, key="#userId")})
     public CreateUserResponseDTO assignRolesToUser(Long userId, Set<java.util.UUID> roleIds) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", userId));

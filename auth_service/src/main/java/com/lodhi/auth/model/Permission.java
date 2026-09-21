@@ -1,5 +1,6 @@
 package com.lodhi.auth.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -28,5 +29,6 @@ public class Permission {
 
     @ManyToMany(mappedBy = "permissions")
     @Builder.Default
+    @JsonIgnore
     private Set<Role> roles = new HashSet<>();
 }

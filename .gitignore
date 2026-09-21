@@ -27,4 +27,9 @@ build/
 ### Environment Files ###
 .env
 .env.*
+<<<<<<< HEAD
 >>>>>>> d3a6620 (chore: remove .env.prod.swp and ignore vim swap files)
+=======
+
+loadtest/
+>>>>>>> 25c1f3a (bcrypt bug solve)

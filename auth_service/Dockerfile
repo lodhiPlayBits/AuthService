@@ -28,7 +28,7 @@ RUN ./mvnw clean package -DskipTests
 # =====================================================
 # Stage 2: Runtime stage
 # =====================================================
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:21-jdk-alpine
 
 # Install curl for healthcheck
 RUN apk add --no-cache curl

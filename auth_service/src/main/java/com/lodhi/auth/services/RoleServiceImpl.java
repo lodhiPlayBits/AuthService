@@ -8,6 +8,9 @@ import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +37,7 @@ public class RoleServiceImpl implements RoleService {
     private final AuditService auditService;
 
     @Override
+    @Cacheable(value={"roles"}, key="#roleName")
     public Role getRoleByName(String roleName){
         // Use fetch join to load permissions with role
         return roleRepository.findByNameWithPermissions(roleName)
@@ -42,6 +46,7 @@ public class RoleServiceImpl implements RoleService {
     }
 
     @Override
+    @Cacheable(value={"roles"}, key="#roleId")
     public Role getRoleById(UUID roleId) {
         // Use fetch join to load permissions with role
         return roleRepository.findByIdWithPermissions(roleId)
@@ -50,6 +55,7 @@ public class RoleServiceImpl implements RoleService {
 
     @Override
     @Transactional(readOnly = true)
+    @Cacheable(value={"roles:all"})
     public Page<RoleResponseDTO> getAllRoles(Pageable pageable) {
         // Enforce maximum page size to prevent unbounded queries
         int maxPageSize = 100;
@@ -67,6 +73,7 @@ public class RoleServiceImpl implements RoleService {
 
     @Override
     @Transactional
+    @Caching(evict={@CacheEvict(value={"roles"}, allEntries=true), @CacheEvict(value={"roles:all"}, allEntries=true)})
     public RoleResponseDTO createRole(CreateRoleRequestDTO requestDTO) {
         String roleName = requestDTO.getRoleName().toUpperCase().trim();
         
@@ -99,6 +106,7 @@ public class RoleServiceImpl implements RoleService {
 
     @Override
     @Transactional
+    @Caching(evict={@CacheEvict(value={"roles"}, key="#roleId"), @CacheEvict(value={"roles:all"}, allEntries=true), @CacheEvict(value={"user-permissions"}, allEntries=true)})
     public void deleteRole(UUID roleId) {
         Role role = getRoleById(roleId);
         
@@ -116,6 +124,7 @@ public class RoleServiceImpl implements RoleService {
 
     @Override
     @Transactional
+    @Caching(evict={@CacheEvict(value={"roles"}, key="#roleId"), @CacheEvict(value={"user-permissions"}, allEntries=true)})
     public RoleResponseDTO assignPermissionsToRole(UUID roleId, Set<UUID> permissionIds) {
         Role role = getRoleById(roleId);
         
@@ -136,6 +145,7 @@ public class RoleServiceImpl implements RoleService {
 
     @Override
     @Transactional
+    @Caching(evict={@CacheEvict(value={"roles"}, key="#roleId"), @CacheEvict(value={"user-permissions"}, allEntries=true)})
     public RoleResponseDTO revokePermissionsFromRole(UUID roleId, Set<UUID> permissionIds) {
         Role role = getRoleById(roleId);
         
