@@ -4,6 +4,7 @@ import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import com.lodhi.auth.enums.Provider;
 import com.lodhi.auth.model.User;
 
 public interface UserRepository extends JpaRepository<User, Long> {
@@ -42,4 +43,10 @@ public interface UserRepository extends JpaRepository<User, Long> {
            "LEFT JOIN FETCH r.permissions " +
            "WHERE u.id = :id")
     Optional<User> findByIdWithRolesAndPermissions(@org.springframework.data.repository.query.Param("id") Long id);
+
+    /**
+     * Find user by OAuth provider and provider-specific ID.
+     * Used during Google Sign-In to check if user already exists.
+     */
+    Optional<User> findByProviderAndProviderId(Provider provider, String providerId);
 }

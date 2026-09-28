@@ -13,5 +13,6 @@ public class LoginResponseDTO {
 
     private CreateUserResponseDTO user;
     private String accessToken;
+    private boolean profileComplete;
     // refreshToken is NOT included - it's only in HttpOnly cookie for security
 }

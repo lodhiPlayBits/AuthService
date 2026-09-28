@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.lodhi.auth.audit.AuditEventType;
 import com.lodhi.auth.audit.AuditService;
+import com.lodhi.auth.dtos.cache.RoleCache;
 import com.lodhi.auth.dtos.request.CreateRoleRequestDTO;
 import com.lodhi.auth.dtos.response.PermissionResponseDTO;
 import com.lodhi.auth.dtos.response.RoleResponseDTO;
@@ -28,6 +29,23 @@ import com.lodhi.auth.respositories.RoleRepository;
 
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Role service implementation.
+ *
+ * CACHING STRATEGY — why we cache RoleCache, not Role:
+ *
+ *   Role.permissions is fetched LAZY. If we cached the JPA entity directly,
+ *   Redis deserialization (which happens outside a Hibernate session) would hit
+ *   the PersistentSet and throw LazyInitializationException → SerializationException.
+ *
+ *   Instead we map to RoleCache (plain Java DTO, no Hibernate dependencies) inside
+ *   the @Transactional boundary while the session is still open, then return the
+ *   RoleCache to Redis. On a cache hit Redis returns RoleCache directly without
+ *   ever touching Hibernate.
+ *
+ *   Callers that need a full Role entity for persistence (e.g. GoogleOAuth2Service)
+ *   use roleCacheToEntity() to reassemble a detached Role from the cache.
+ */
 @RequiredArgsConstructor
 @Service
 public class RoleServiceImpl implements RoleService {
@@ -36,143 +54,223 @@ public class RoleServiceImpl implements RoleService {
     private final PermissionRepository permissionRepository;
     private final AuditService auditService;
 
+    // ─── Cache-safe lookup methods ──────────────────────────────────────────
+
+    /**
+     * Returns a RoleCache (stored in Redis) instead of a JPA entity.
+     * All fields — including permissions — are plain Java types.
+     */
     @Override
-    @Cacheable(value={"roles"}, key="#roleName")
-    public Role getRoleByName(String roleName){
-        // Use fetch join to load permissions with role
-        return roleRepository.findByNameWithPermissions(roleName)
-                .orElseThrow(() ->
-                        new ResourceNotFoundException("Role", roleName));
+    @Transactional(readOnly = true)
+    @Cacheable(value = "roles", key = "#roleName")
+    public RoleCache getRoleByName(String roleName) {
+        Role role = roleRepository.findByNameWithPermissions(roleName)
+                .orElseThrow(() -> new ResourceNotFoundException("Role", roleName));
+        return toRoleCache(role);
     }
 
+    /**
+     * Returns a RoleCache (stored in Redis) by UUID.
+     */
     @Override
-    @Cacheable(value={"roles"}, key="#roleId")
-    public Role getRoleById(UUID roleId) {
-        // Use fetch join to load permissions with role
-        return roleRepository.findByIdWithPermissions(roleId)
+    @Transactional(readOnly = true)
+    @Cacheable(value = "roles", key = "#roleId")
+    public RoleCache getRoleById(UUID roleId) {
+        Role role = roleRepository.findByIdWithPermissions(roleId)
                 .orElseThrow(() -> new ResourceNotFoundException("Role", roleId));
+        return toRoleCache(role);
     }
+
+    // ─── Entity reconstruction for internal callers ─────────────────────────
+
+    /**
+     * Convenience method: fetch (or use cached) RoleCache, then turn it back into
+     * a detached Role entity that is safe to attach to new JPA entities.
+     *
+     * The returned Role has its permissions eagerly populated from the cache,
+     * so no Hibernate session is needed downstream.
+     */
+    @Transactional(readOnly = true)
+    public Role getRoleEntityByName(String roleName) {
+        RoleCache cache = getRoleByName(roleName);
+        return roleCacheToEntity(cache);
+    }
+
+    @Transactional(readOnly = true)
+    public Role getRoleEntityById(UUID roleId) {
+        RoleCache cache = getRoleById(roleId);
+        return roleCacheToEntity(cache);
+    }
+
+    // ─── Paginated listing ──────────────────────────────────────────────────
 
     @Override
     @Transactional(readOnly = true)
-    @Cacheable(value={"roles:all"})
+    @Cacheable(value = "roles:all")
     public Page<RoleResponseDTO> getAllRoles(Pageable pageable) {
-        // Enforce maximum page size to prevent unbounded queries
         int maxPageSize = 100;
         if (pageable.getPageSize() > maxPageSize) {
             pageable = org.springframework.data.domain.PageRequest.of(
-                pageable.getPageNumber(), 
-                maxPageSize, 
-                pageable.getSort()
-            );
+                    pageable.getPageNumber(),
+                    maxPageSize,
+                    pageable.getSort());
         }
-        
         Page<Role> rolePage = roleRepository.findAll(pageable);
         return rolePage.map(this::mapToRoleResponseDTO);
     }
 
+    // ─── Mutation methods ───────────────────────────────────────────────────
+
     @Override
     @Transactional
-    @Caching(evict={@CacheEvict(value={"roles"}, allEntries=true), @CacheEvict(value={"roles:all"}, allEntries=true)})
+    @Caching(evict = {
+            @CacheEvict(value = "roles", allEntries = true),
+            @CacheEvict(value = "roles:all", allEntries = true)
+    })
     public RoleResponseDTO createRole(CreateRoleRequestDTO requestDTO) {
         String roleName = requestDTO.getRoleName().toUpperCase().trim();
-        
-        // Validate role name format
+
         if (!roleName.matches("^[A-Z_]+$")) {
             throw new ValidationException("Role name must contain only uppercase letters and underscores");
         }
-        
-        // Check if role already exists
         if (roleRepository.existsByName(roleName)) {
             throw new ValidationException("Role already exists: " + roleName);
         }
-        
+
         Role role = Role.builder()
                 .name(roleName)
                 .description(requestDTO.getDescription())
-                .systemRole(false) // User-created roles are never system roles
+                .systemRole(false)
                 .permissions(new HashSet<>())
                 .build();
-        
+
         Role savedRole = roleRepository.save(role);
-        
-        // Audit log
+
         String username = SecurityContextHolder.getContext().getAuthentication().getName();
         auditService.logServiceEvent(null, username, AuditEventType.ROLE_CREATED, true,
-            "Role created: " + roleName);
-        
+                "Role created: " + roleName);
+
         return mapToRoleResponseDTO(savedRole);
     }
 
     @Override
     @Transactional
-    @Caching(evict={@CacheEvict(value={"roles"}, key="#roleId"), @CacheEvict(value={"roles:all"}, allEntries=true), @CacheEvict(value={"user-permissions"}, allEntries=true)})
+    @Caching(evict = {
+            @CacheEvict(value = "roles", allEntries = true),
+            @CacheEvict(value = "roles:all", allEntries = true),
+            @CacheEvict(value = "user-permissions", allEntries = true)
+    })
     public void deleteRole(UUID roleId) {
-        Role role = getRoleById(roleId);
-        
-        // Prevent deletion of system roles
-        if (role.isSystemRole()) {
-            throw new ValidationException("Cannot delete system role: " + role.getName());
+        RoleCache cache = getRoleById(roleId);
+
+        if (cache.isSystemRole()) {
+            throw new ValidationException("Cannot delete system role: " + cache.getName());
         }
-        
+
         String username = SecurityContextHolder.getContext().getAuthentication().getName();
         auditService.logServiceEvent(null, username, AuditEventType.ROLE_DELETED, true,
-            "Role deleted: " + role.getName());
-        
-        roleRepository.delete(role);
+                "Role deleted: " + cache.getName());
+
+        roleRepository.deleteById(roleId);
     }
 
     @Override
     @Transactional
-    @Caching(evict={@CacheEvict(value={"roles"}, key="#roleId"), @CacheEvict(value={"user-permissions"}, allEntries=true)})
+    @Caching(evict = {
+            @CacheEvict(value = "roles", key = "#roleId"),
+            @CacheEvict(value = "user-permissions", allEntries = true)
+    })
     public RoleResponseDTO assignPermissionsToRole(UUID roleId, Set<UUID> permissionIds) {
-        Role role = getRoleById(roleId);
-        
+        // Fetch fresh entity from DB (not from cache) for mutation
+        Role role = roleRepository.findByIdWithPermissions(roleId)
+                .orElseThrow(() -> new ResourceNotFoundException("Role", roleId));
+
         Set<Permission> permissions = permissionIds.stream()
-                .map(permissionId -> permissionRepository.findById(permissionId)
-                        .orElseThrow(() -> new ResourceNotFoundException("Permission", permissionId)))
+                .map(id -> permissionRepository.findById(id)
+                        .orElseThrow(() -> new ResourceNotFoundException("Permission", id)))
                 .collect(Collectors.toSet());
-        
+
         role.getPermissions().addAll(permissions);
         Role updatedRole = roleRepository.save(role);
-        
+
         String username = SecurityContextHolder.getContext().getAuthentication().getName();
         auditService.logServiceEvent(null, username, AuditEventType.ROLE_PERMISSIONS_ASSIGNED, true,
-            "Assigned " + permissions.size() + " permissions to role: " + role.getName());
-        
+                "Assigned " + permissions.size() + " permissions to role: " + role.getName());
+
         return mapToRoleResponseDTO(updatedRole);
     }
 
     @Override
     @Transactional
-    @Caching(evict={@CacheEvict(value={"roles"}, key="#roleId"), @CacheEvict(value={"user-permissions"}, allEntries=true)})
+    @Caching(evict = {
+            @CacheEvict(value = "roles", key = "#roleId"),
+            @CacheEvict(value = "user-permissions", allEntries = true)
+    })
     public RoleResponseDTO revokePermissionsFromRole(UUID roleId, Set<UUID> permissionIds) {
-        Role role = getRoleById(roleId);
-        
+        // Fetch fresh entity from DB (not from cache) for mutation
+        Role role = roleRepository.findByIdWithPermissions(roleId)
+                .orElseThrow(() -> new ResourceNotFoundException("Role", roleId));
+
         Set<Permission> permissionsToRevoke = permissionIds.stream()
-                .map(permissionId -> permissionRepository.findById(permissionId)
-                        .orElseThrow(() -> new ResourceNotFoundException("Permission", permissionId)))
+                .map(id -> permissionRepository.findById(id)
+                        .orElseThrow(() -> new ResourceNotFoundException("Permission", id)))
                 .collect(Collectors.toSet());
-        
+
         role.getPermissions().removeAll(permissionsToRevoke);
         Role updatedRole = roleRepository.save(role);
-        
+
         String username = SecurityContextHolder.getContext().getAuthentication().getName();
         auditService.logServiceEvent(null, username, AuditEventType.ROLE_PERMISSIONS_REVOKED, true,
-            "Revoked " + permissionsToRevoke.size() + " permissions from role: " + role.getName());
-        
+                "Revoked " + permissionsToRevoke.size() + " permissions from role: " + role.getName());
+
         return mapToRoleResponseDTO(updatedRole);
     }
-    
+
+    // ─── Private helpers ────────────────────────────────────────────────────
+
+    /**
+     * Map JPA Role (session open) → RoleCache (plain Java, session-independent).
+     * Called inside @Transactional so permissions are accessible.
+     */
+    private RoleCache toRoleCache(Role role) {
+        Set<String> permissionNames = role.getPermissions().stream()
+                .map(Permission::getName)
+                .collect(Collectors.toSet());
+
+        return new RoleCache(
+                role.getId(),
+                role.getName(),
+                role.getDescription(),
+                role.isSystemRole(),
+                permissionNames);
+    }
+
+    /**
+     * Reconstruct a detached Role entity from a RoleCache.
+     * Permissions are loaded from the DB so the entity can be persisted safely
+     * (e.g. when assigning to a new User).
+     */
+    private Role roleCacheToEntity(RoleCache cache) {
+        Set<Permission> permissions = permissionRepository.findByNameIn(cache.getPermissionNames());
+
+        return Role.builder()
+                .id(cache.getId())
+                .name(cache.getName())
+                .description(cache.getDescription())
+                .systemRole(cache.isSystemRole())
+                .permissions(new HashSet<>(permissions))
+                .build();
+    }
+
     private RoleResponseDTO mapToRoleResponseDTO(Role role) {
         Set<PermissionResponseDTO> permissionDTOs = role.getPermissions().stream()
-                .map(permission -> PermissionResponseDTO.builder()
-                        .id(permission.getId())
-                        .name(permission.getName())
-                        .description(permission.getDescription())
+                .map(p -> PermissionResponseDTO.builder()
+                        .id(p.getId())
+                        .name(p.getName())
+                        .description(p.getDescription())
                         .build())
                 .collect(Collectors.toSet());
-        
+
         return RoleResponseDTO.builder()
                 .id(role.getId())
                 .roleName(role.getName())

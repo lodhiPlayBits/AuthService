@@ -100,6 +100,7 @@ public class AuthServiceImpl implements AuthService {
             return LoginResponseDTO.builder()
                     .accessToken(accessToken)
                     .user(mapper.map(user, CreateUserResponseDTO.class))
+                    .profileComplete(true)
                     .build();
                     
         } catch (BadCredentialsException | DisabledException | LockedException e) {

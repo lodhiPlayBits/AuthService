@@ -33,7 +33,9 @@ class TokenRepositoryIntegrationTest extends BaseIntegrationTest {
     @BeforeEach
     void setUp() {
         refreshTokenRepository.deleteAll();
+        refreshTokenRepository.flush();
         userRepository.deleteAll();
+        userRepository.flush();
 
         User user = new User();
         user.setUsername("tokenuser");
