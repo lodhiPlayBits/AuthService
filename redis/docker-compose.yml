@@ -1,0 +1,106 @@
+services:
+  redis:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: redis-service
+    restart: unless-stopped
+    
+    # Security: Don't expose port on host in production
+    # Only expose if you need direct access from host
+    ports:
+      - "127.0.0.1:6379:6379"  # Bind only to localhost
+    
+    # Environment variables
+    env_file:
+      - .env
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    
+    # Volumes
+    volumes:
+      - redis_data:/data
+      - ./backups:/backups
+      - ./logs:/var/log/redis
+    
+    # Command - password is passed via --requirepass
+    command: >
+      sh -c "redis-server 
+      --port 6379 
+      --bind 0.0.0.0 
+      --requirepass $${REDIS_PASSWORD}
+      --maxmemory 512mb 
+      --maxmemory-policy allkeys-lru 
+      --appendonly yes 
+      --appendfsync everysec 
+      --save 900 1 
+      --save 300 10 
+      --save 60 10000 
+      --dir /data 
+      --loglevel notice 
+      --tcp-keepalive 300 
+      --timeout 300 
+      --maxclients 10000 
+      --protected-mode yes 
+      --rename-command FLUSHDB '' 
+      --rename-command FLUSHALL '' 
+      --rename-command KEYS '' 
+      --rename-command CONFIG CONFIG_$${REDIS_PASSWORD} 
+      --rename-command DEBUG '' 
+      --rename-command SHUTDOWN SHUTDOWN_$${REDIS_PASSWORD} 
+      --lazyfree-lazy-eviction yes 
+      --lazyfree-lazy-expire yes 
+      --lazyfree-lazy-server-del yes 
+      --replica-lazy-flush yes 
+      --activedefrag yes"
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "$${REDIS_PASSWORD}", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    
+    # Read-only root filesystem (except writable volumes)
+    read_only: true
+    tmpfs:
+      - /tmp:size=64M,mode=1777
+    
+    # User (run as non-root)
+    user: "999:999"
+    
+    # Network
+    networks:
+      - authnet
+    
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=redis"
+        tag: "redis/{{.Name}}"
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  authnet:
+    external: true

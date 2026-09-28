@@ -3,10 +3,18 @@
 *.iws
 *.iml
 *.ipr
-*.swp
 
-<<<<<<< HEAD
-=======
+### Vim ###
+*.swp
+*.swo
+
+### Environment Files ###
+.env
+.env.*
+
+loadtest/
+build.log
+
 ### NetBeans ###
 /nbproject/private/
 /nbbuild/
@@ -19,5 +27,3 @@ build/
 
 ### VS Code ###
 .vscode/
-.idea/
->>>>>>> 9aa16b8 (stop tracking .idea)
