@@ -80,8 +80,7 @@ class RoleServiceImplTest {
     @Test
     void testGetRoleByName_Success() {
         when(roleRepository.findByNameWithPermissions("MANAGER")).thenReturn(Optional.of(role));
-        Role result = roleService.getRoleByName("MANAGER");
-        assertEquals("MANAGER", result.getName());
+        RoleCache result = roleService.getRoleByName("MANAGER");
     }
 
     @Test

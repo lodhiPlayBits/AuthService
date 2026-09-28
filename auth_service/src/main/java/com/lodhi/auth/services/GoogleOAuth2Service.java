@@ -55,7 +55,7 @@ public class GoogleOAuth2Service {
 
     private final GoogleIdTokenVerifier verifier;
     private final UserRepository userRepository;
-    private final RoleService roleService;
+    private final RoleServiceImpl roleService;  // cast to impl to access getRoleEntityByName()
     private final JwtService jwtService;
     private final RefreshTokenRepository refreshTokenRepository;
     private final CookieService cookieService;
@@ -223,7 +223,9 @@ public class GoogleOAuth2Service {
     private User createPartialGoogleUser(
             String googleId, String email, String name, String picture) {
 
-        Role userRole = roleService.getRoleByName(SystemRoles.USER);
+        // Use getRoleEntityByName() — returns a proper JPA entity (not RoleCache)
+        // so it can be attached to the new User and persisted.
+        Role userRole = roleService.getRoleEntityByName(SystemRoles.USER);
 
         User user = User.builder()
                 .email(email)
@@ -237,9 +239,13 @@ public class GoogleOAuth2Service {
                 .gender(null)                   // Filled in step 2
                 .profileComplete(false)         // Triggers "complete profile" on frontend
                 .enabled(true)
-                .roles(Set.of(userRole))
                 .build();
 
+        // Save user first without roles to get the DB-assigned user_id (FK constraint)
+        user = userRepository.saveAndFlush(user);
+
+        // Now assign the role — user_table row exists
+        user.setRoles(new java.util.HashSet<>(Set.of(userRole)));
         return userRepository.save(user);
     }
 

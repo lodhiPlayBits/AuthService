@@ -32,7 +32,7 @@ class UserServiceImplTest {
 
     @Mock private UserRepository userRepository;
     @Mock private ModelMapper modelMapper;
-    @Mock private RoleService roleService;
+    @Mock private RoleServiceImpl roleService;
     @Mock private PasswordEncoder passwordEncoder;
 
     @InjectMocks
@@ -67,7 +67,7 @@ class UserServiceImplTest {
         when(passwordEncoder.encode("raw_password")).thenReturn("encoded_password");
 
         Role userRole = new Role();
-        when(roleService.getRoleByName(SystemRoles.USER)).thenReturn(userRole);
+        when(roleService.getRoleEntityByName(SystemRoles.USER)).thenReturn(userRole);
         when(userRepository.save(any(User.class))).thenReturn(user);
 
         CreateUserResponseDTO expectedResponse = new CreateUserResponseDTO();
@@ -130,7 +130,7 @@ class UserServiceImplTest {
         when(userRepository.existsByUsername(anyString())).thenReturn(false);
         when(userRepository.existsByPhoneNumber(anyString())).thenReturn(false);
         when(modelMapper.map(req, User.class)).thenReturn(new User());
-        when(roleService.getRoleByName(SystemRoles.USER)).thenReturn(new Role());
+        when(roleService.getRoleEntityByName(SystemRoles.USER)).thenReturn(new Role());
 
         when(userRepository.save(any(User.class)))
             .thenThrow(new org.springframework.dao.DataIntegrityViolationException("duplicate key value violates unique constraint \"user_table_email_key\""));
@@ -149,7 +149,7 @@ class UserServiceImplTest {
         when(userRepository.existsByUsername(anyString())).thenReturn(false);
         when(userRepository.existsByPhoneNumber(anyString())).thenReturn(false);
         when(modelMapper.map(req, User.class)).thenReturn(new User());
-        when(roleService.getRoleByName(SystemRoles.USER)).thenReturn(new Role());
+        when(roleService.getRoleEntityByName(SystemRoles.USER)).thenReturn(new Role());
 
         when(userRepository.save(any(User.class)))
             .thenThrow(new org.springframework.dao.DataIntegrityViolationException("duplicate key value violates unique constraint \"user_table_username_key\""));
@@ -168,7 +168,7 @@ class UserServiceImplTest {
         when(userRepository.existsByUsername(anyString())).thenReturn(false);
         when(userRepository.existsByPhoneNumber(anyString())).thenReturn(false);
         when(modelMapper.map(req, User.class)).thenReturn(new User());
-        when(roleService.getRoleByName(SystemRoles.USER)).thenReturn(new Role());
+        when(roleService.getRoleEntityByName(SystemRoles.USER)).thenReturn(new Role());
 
         when(userRepository.save(any(User.class)))
             .thenThrow(new org.springframework.dao.DataIntegrityViolationException("user_table_phone_number_key"));
@@ -187,7 +187,7 @@ class UserServiceImplTest {
         when(userRepository.existsByUsername(anyString())).thenReturn(false);
         when(userRepository.existsByPhoneNumber(anyString())).thenReturn(false);
         when(modelMapper.map(req, User.class)).thenReturn(new User());
-        when(roleService.getRoleByName(SystemRoles.USER)).thenReturn(new Role());
+        when(roleService.getRoleEntityByName(SystemRoles.USER)).thenReturn(new Role());
 
         when(userRepository.save(any(User.class)))
             .thenThrow(new org.springframework.dao.DataIntegrityViolationException("some other constraint"));
@@ -346,7 +346,7 @@ class UserServiceImplTest {
         mockRole.setName("ADMIN");
         
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));
-        when(roleService.getRoleById(roleId)).thenReturn(mockRole);
+        when(roleService.getRoleEntityById(roleId)).thenReturn(mockRole);
         when(userRepository.save(user)).thenReturn(user);
 
         // Mock SecurityContext to avoid NullPointerException in audit log
