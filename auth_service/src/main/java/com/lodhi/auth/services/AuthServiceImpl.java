@@ -75,7 +75,6 @@ public class AuthServiceImpl implements AuthService {
             
             // Save refresh token to database for validation and revocation
             RefreshToken refreshTokenEntity = RefreshToken.builder()
-                    .jti(jti)
                     .jtiHash(jtiHash)
                     .familyId(familyId)
                     .user(user)

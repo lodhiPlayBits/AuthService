@@ -49,7 +49,6 @@ class TokenRepositoryIntegrationTest extends BaseIntegrationTest {
         savedUser = userRepository.save(user);
 
         RefreshToken token = RefreshToken.builder()
-                .jti("jti-123")
                 .jtiHash("hashed-jti-123")
                 .familyId("family-123")
                 .user(savedUser)
@@ -64,7 +63,7 @@ class TokenRepositoryIntegrationTest extends BaseIntegrationTest {
     void testFindByJtiHash() {
         Optional<RefreshToken> found = refreshTokenRepository.findByJtiHash("hashed-jti-123");
         assertTrue(found.isPresent());
-        assertEquals("jti-123", found.get().getJti());
+        assertEquals("hashed-jti-123", found.get().getJtiHash());
     }
 
     @Test
@@ -82,7 +81,6 @@ class TokenRepositoryIntegrationTest extends BaseIntegrationTest {
     void testRevokeFamily() {
         // Add a second token to the family
         RefreshToken token2 = RefreshToken.builder()
-                .jti("jti-456")
                 .jtiHash("hashed-jti-456")
                 .familyId("family-123")
                 .user(savedUser)

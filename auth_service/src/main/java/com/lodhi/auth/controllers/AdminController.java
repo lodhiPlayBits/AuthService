@@ -139,4 +139,13 @@ public class AdminController {
             @Valid @RequestBody AssignRolesRequestDTO requestDTO) {
         return ResponseEntity.ok(userService.assignRolesToUser(userId, requestDTO.getRoleIds()));
     }
+
+    @PutMapping("/users/{userId}/status")
+    @RequiresPermission("users:update")
+    public ResponseEntity<Void> updateUserStatus(
+            @PathVariable Long userId,
+            @org.springframework.web.bind.annotation.RequestParam boolean enabled) {
+        userService.updateUserStatus(userId, enabled);
+        return ResponseEntity.noContent().build();
+    }
 }

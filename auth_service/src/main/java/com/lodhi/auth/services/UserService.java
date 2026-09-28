@@ -40,4 +40,10 @@ public interface UserService {
      * New password is BCrypt encoded before storage.
      */
     void changePassword(Long userId, ChangePasswordRequestDTO requestDTO);
+    
+    /**
+     * Update user account status (enable/disable).
+     * Disabling an account will immediately revoke all active sessions.
+     */
+    void updateUserStatus(Long userId, boolean enabled);
 }

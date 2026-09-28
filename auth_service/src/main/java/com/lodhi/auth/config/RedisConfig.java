@@ -83,9 +83,10 @@ public class RedisConfig {
         ObjectMapper objectMapper = new ObjectMapper();
         objectMapper.registerModule(new JavaTimeModule());
         objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-        objectMapper.activateDefaultTyping(objectMapper.getPolymorphicTypeValidator(), ObjectMapper.DefaultTyping.NON_FINAL, JsonTypeInfo.As.PROPERTY);
+        // Default typing intentionally disabled
         
-        GenericJackson2JsonRedisSerializer jsonSerializer = new GenericJackson2JsonRedisSerializer(objectMapper);
+        org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer jsonSerializer = 
+                new org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer(objectMapper);
         template.setValueSerializer(jsonSerializer);
         template.setHashValueSerializer(jsonSerializer);
         
@@ -98,25 +99,23 @@ public class RedisConfig {
         ObjectMapper objectMapper = new ObjectMapper();
         objectMapper.registerModule(new JavaTimeModule());
         objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-        objectMapper.activateDefaultTyping(objectMapper.getPolymorphicTypeValidator(), ObjectMapper.DefaultTyping.NON_FINAL, JsonTypeInfo.As.PROPERTY);
-        
-        GenericJackson2JsonRedisSerializer jsonSerializer = new GenericJackson2JsonRedisSerializer(objectMapper);
-        
+        // Default typing is intentionally DISABLED to avoid polymorphic serialization vulnerabilities
+
         RedisCacheConfiguration defaultConfig = RedisCacheConfiguration.defaultCacheConfig()
                 .entryTtl(Duration.ofMillis(cacheTtl))
                 .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
-                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(jsonSerializer))
                 .disableCachingNullValues()
                 .prefixCacheNameWith("auth:v2:");
 
+        // Explicit serializers for known cache DTOs
+        org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer<com.lodhi.auth.dtos.cache.RoleCache> roleSerializer =
+                new org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer<>(objectMapper, com.lodhi.auth.dtos.cache.RoleCache.class);
+
         Map<String, RedisCacheConfiguration> cacheConfigs = new HashMap<>();
-        cacheConfigs.put("users", defaultConfig.entryTtl(Duration.ofMinutes(5L)).prefixCacheNameWith("auth:v2:users:"));
-        cacheConfigs.put("users:email", defaultConfig.entryTtl(Duration.ofMinutes(5L)).prefixCacheNameWith("auth:v2:users:email:"));
-        cacheConfigs.put("user-permissions", defaultConfig.entryTtl(Duration.ofMinutes(10L)).prefixCacheNameWith("auth:v2:perms:"));
-        cacheConfigs.put("roles", defaultConfig.entryTtl(Duration.ofHours(1L)).prefixCacheNameWith("auth:v2:roles:"));
-        cacheConfigs.put("roles:all", defaultConfig.entryTtl(Duration.ofHours(1L)).prefixCacheNameWith("auth:v2:roles:all:"));
-        cacheConfigs.put("permissions", defaultConfig.entryTtl(Duration.ofHours(1L)).prefixCacheNameWith("auth:v2:permissions:"));
-        cacheConfigs.put("permissions:all", defaultConfig.entryTtl(Duration.ofHours(1L)).prefixCacheNameWith("auth:v2:permissions:all:"));
+                
+        cacheConfigs.put("roles", defaultConfig.entryTtl(Duration.ofHours(1L))
+                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(roleSerializer))
+                .prefixCacheNameWith("auth:v2:roles:"));
 
         return RedisCacheManager.builder(connectionFactory)
                 .cacheDefaults(defaultConfig)

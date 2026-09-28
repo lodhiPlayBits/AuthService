@@ -15,5 +15,6 @@ public abstract class BaseIntegrationTest {
     @MockitoBean
     private LettuceConnectionFactory redisConnectionFactory;
     
-    // Shared configuration can go here
+    @MockitoBean
+    private com.lodhi.auth.services.TokenBlacklistService tokenBlacklistService;
 }
