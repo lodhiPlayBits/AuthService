@@ -33,7 +33,9 @@ public class SecurityConfig {
 
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
+        // Reduced the strength (work factor) to 4 (minimum allowed) for faster processing.
+        // The default is 10.
+        return new BCryptPasswordEncoder(4);
     }
 
     @Bean
@@ -52,6 +54,7 @@ public class SecurityConfig {
                 .ignoringRequestMatchers(
                         "/api/v1/auth/login",
                         "/api/v1/auth/register",
+                        "/api/v1/auth/oauth2/**",
                         "/api/v1/admin/**",
                         "/api/v1/users/**",
                         "/actuator/**"
@@ -65,6 +68,8 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/register")
                 .permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/login")
+                .permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/v1/auth/oauth2/google")
                 .permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/refresh")
                 .permitAll()

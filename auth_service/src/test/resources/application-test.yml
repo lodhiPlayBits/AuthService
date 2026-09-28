@@ -5,6 +5,9 @@ spring:
     password: 
     driver-class-name: org.h2.Driver
 
+  cache:
+    type: simple
+    
   jpa:
     database: H2
     database-platform: org.hibernate.dialect.H2Dialect
@@ -14,9 +17,15 @@ spring:
     properties:
       hibernate:
         format_sql: true
+        connection.handling_mode: DELAYED_ACQUISITION_AND_RELEASE_AFTER_TRANSACTION
 
   flyway:
     enabled: false # disable flyway for h2 to avoid postgresql specific syntax issues
+
+management:
+  health:
+    redis:
+      enabled: false
 
 security:
   jwt:
@@ -30,3 +39,7 @@ security:
     cookie-secure: false
     cookie-same-site: lax
     cookie-domain: localhost
+
+oauth2:
+  google:
+    client-id: "test-google-client-id"

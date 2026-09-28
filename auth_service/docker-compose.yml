@@ -79,6 +79,9 @@ services:
       # Log file
       LOG_FILE: ${LOG_FILE}
 
+      # Google OAuth
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+
       # Redis
       REDIS_HOST: ${REDIS_HOST:-redis-service}
       REDIS_PORT: ${REDIS_PORT:-6379}

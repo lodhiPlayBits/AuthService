@@ -42,12 +42,10 @@ public class User implements UserDetails {
     private String email;
     @Column(nullable = false)
     private String name;
-    @Column(nullable = false)
     @Enumerated(EnumType.STRING)
     private Gender gender;
-    @Column(unique = true,nullable = false)
+    @Column(unique = true)
     private String phoneNumber;
-    @Column(nullable = false)
     private String password;
 
     private String image;
@@ -65,7 +63,12 @@ public class User implements UserDetails {
     @Enumerated(EnumType.STRING)
     private Provider provider=Provider.LOCAL;
 
-    @Column(nullable = false)
+    @Column(name = "provider_id")
+    private String providerId;
+
+    @Column(name = "profile_complete", nullable = false)
+    private boolean profileComplete = true;
+
     @ManyToMany(fetch = FetchType.LAZY)  // Changed from EAGER to LAZY
     @JoinTable(
             name="user_roles",

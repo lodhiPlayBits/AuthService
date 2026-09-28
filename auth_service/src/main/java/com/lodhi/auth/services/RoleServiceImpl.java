@@ -40,17 +40,27 @@ public class RoleServiceImpl implements RoleService {
     @Cacheable(value={"roles"}, key="#roleName")
     public Role getRoleByName(String roleName){
         // Use fetch join to load permissions with role
-        return roleRepository.findByNameWithPermissions(roleName)
+        Role role = roleRepository.findByNameWithPermissions(roleName)
                 .orElseThrow(() ->
                         new ResourceNotFoundException("Role", roleName));
+        // Convert PersistentSet to standard HashSet to prevent Redis serialization issues
+        if (role.getPermissions() != null) {
+            role.setPermissions(new HashSet<>(role.getPermissions()));
+        }
+        return role;
     }
 
     @Override
     @Cacheable(value={"roles"}, key="#roleId")
     public Role getRoleById(UUID roleId) {
         // Use fetch join to load permissions with role
-        return roleRepository.findByIdWithPermissions(roleId)
+        Role role = roleRepository.findByIdWithPermissions(roleId)
                 .orElseThrow(() -> new ResourceNotFoundException("Role", roleId));
+        // Convert PersistentSet to standard HashSet to prevent Redis serialization issues
+        if (role.getPermissions() != null) {
+            role.setPermissions(new HashSet<>(role.getPermissions()));
+        }
+        return role;
     }
 
     @Override

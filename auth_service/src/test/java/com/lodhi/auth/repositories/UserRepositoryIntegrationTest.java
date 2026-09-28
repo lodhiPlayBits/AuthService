@@ -29,7 +29,7 @@ class UserRepositoryIntegrationTest extends BaseIntegrationTest {
         Role userRole = new Role();
         userRole.setName("TEST_USER_ROLE");
         userRole.setDescription("Test Role");
-        roleRepository.save(userRole);
+        userRole = roleRepository.saveAndFlush(userRole);
 
         // Create User
         User user = new User();
@@ -43,7 +43,7 @@ class UserRepositoryIntegrationTest extends BaseIntegrationTest {
         user.setEnabled(true);
         user.setRoles(Set.of(userRole));
 
-        User savedUser = userRepository.save(user);
+        User savedUser = userRepository.saveAndFlush(user);
         assertNotNull(savedUser.getId());
 
         // Find User
@@ -67,7 +67,7 @@ class UserRepositoryIntegrationTest extends BaseIntegrationTest {
         user.setGender(Provider.LOCAL == null ? null : com.lodhi.auth.enums.Gender.MALE); // Dummy gender
         user.setProvider(Provider.LOCAL);
         user.setEnabled(true);
-        userRepository.save(user);
+        userRepository.saveAndFlush(user);
 
         assertTrue(userRepository.existsByEmail("existstest@example.com"));
         assertTrue(userRepository.existsByUsername("existstest"));

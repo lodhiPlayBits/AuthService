@@ -13,3 +13,4 @@
 .env.*
 
 loadtest/
+build.log
