@@ -151,14 +151,22 @@ public class UserServiceImpl implements UserService {
     @Transactional
     @CacheEvict(value={"users"}, key="#userId")
     public void changePassword(Long userId, ChangePasswordRequestDTO requestDTO) {
+        // Load user
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", userId));
+
+        // OAuth users cannot change password (they don't have one)
+        if (user.getProvider() != Provider.LOCAL) {
+            throw new ValidationException(
+                "Password change is not available for " + user.getProvider()
+                + " accounts. Please manage your password through your OAuth provider."
+            );
+        }
+
         // Validate passwords match
         if (!requestDTO.getNewPassword().equals(requestDTO.getConfirmPassword())) {
             throw new ValidationException("New password and confirmation do not match");
         }
-        
-        // Load user
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User", userId));
         
         // Verify current password
         if (!passwordEncoder.matches(requestDTO.getCurrentPassword(), user.getPassword())) {

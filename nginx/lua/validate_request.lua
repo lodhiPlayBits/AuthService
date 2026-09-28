@@ -48,6 +48,7 @@ local is_public =
     string.find(uri, "^/api/v1/auth/login/?$") ~= nil
     or string.find(uri, "^/api/v1/auth/register/?$") ~= nil
     or string.find(uri, "^/api/v1/auth/refresh/?$") ~= nil
+    or string.find(uri, "^/api/v1/auth/oauth2/") ~= nil
 
 if not is_public then
     local auth_header = ngx.req.get_headers()["authorization"]

@@ -5,6 +5,7 @@ public enum ErrorCode {
     UNAUTHORIZED,
     ACCOUNT_LOCKED,
     INVALID_IDENTIFIER,
+    OAUTH2_ERROR,
     
     // Authorization
     INSUFFICIENT_PERMISSION,

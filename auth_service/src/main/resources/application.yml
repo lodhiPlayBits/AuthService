@@ -166,3 +166,10 @@ security:
     cookie-same-site: ${JWT_COOKIE_SAME_SITE:lax}
     cookie-domain: ${JWT_COOKIE_DOMAIN:}
     cookie-path: ${JWT_COOKIE_PATH:/api/v1/auth}
+
+# =====================================================
+# Google OAuth2 Configuration
+# =====================================================
+oauth2:
+  google:
+    client-id: ${GOOGLE_CLIENT_ID}

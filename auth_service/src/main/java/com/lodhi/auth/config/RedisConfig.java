@@ -24,6 +24,8 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.springframework.context.annotation.Profile;
+
 /**
  * Redis Configuration for Caching and Data Storage
  * 
@@ -35,6 +37,7 @@ import java.util.Map;
  */
 @Configuration
 @EnableCaching
+@Profile("!test")
 public class RedisConfig {
 
     @Value("${spring.data.redis.host}")
@@ -100,20 +103,20 @@ public class RedisConfig {
         GenericJackson2JsonRedisSerializer jsonSerializer = new GenericJackson2JsonRedisSerializer(objectMapper);
         
         RedisCacheConfiguration defaultConfig = RedisCacheConfiguration.defaultCacheConfig()
-                .entryTtl(Duration.ofMinutes(10L))
+                .entryTtl(Duration.ofMillis(cacheTtl))
                 .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
                 .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(jsonSerializer))
                 .disableCachingNullValues()
-                .prefixCacheNameWith("auth:");
+                .prefixCacheNameWith("auth:v2:");
 
         Map<String, RedisCacheConfiguration> cacheConfigs = new HashMap<>();
-        cacheConfigs.put("users", defaultConfig.entryTtl(Duration.ofMinutes(5L)).prefixCacheNameWith("auth:users:"));
-        cacheConfigs.put("users:email", defaultConfig.entryTtl(Duration.ofMinutes(5L)).prefixCacheNameWith("auth:users:email:"));
-        cacheConfigs.put("user-permissions", defaultConfig.entryTtl(Duration.ofMinutes(10L)).prefixCacheNameWith("auth:perms:"));
-        cacheConfigs.put("roles", defaultConfig.entryTtl(Duration.ofHours(1L)).prefixCacheNameWith("auth:roles:"));
-        cacheConfigs.put("roles:all", defaultConfig.entryTtl(Duration.ofHours(1L)).prefixCacheNameWith("auth:roles:all:"));
-        cacheConfigs.put("permissions", defaultConfig.entryTtl(Duration.ofHours(1L)).prefixCacheNameWith("auth:permissions:"));
-        cacheConfigs.put("permissions:all", defaultConfig.entryTtl(Duration.ofHours(1L)).prefixCacheNameWith("auth:permissions:all:"));
+        cacheConfigs.put("users", defaultConfig.entryTtl(Duration.ofMinutes(5L)).prefixCacheNameWith("auth:v2:users:"));
+        cacheConfigs.put("users:email", defaultConfig.entryTtl(Duration.ofMinutes(5L)).prefixCacheNameWith("auth:v2:users:email:"));
+        cacheConfigs.put("user-permissions", defaultConfig.entryTtl(Duration.ofMinutes(10L)).prefixCacheNameWith("auth:v2:perms:"));
+        cacheConfigs.put("roles", defaultConfig.entryTtl(Duration.ofHours(1L)).prefixCacheNameWith("auth:v2:roles:"));
+        cacheConfigs.put("roles:all", defaultConfig.entryTtl(Duration.ofHours(1L)).prefixCacheNameWith("auth:v2:roles:all:"));
+        cacheConfigs.put("permissions", defaultConfig.entryTtl(Duration.ofHours(1L)).prefixCacheNameWith("auth:v2:permissions:"));
+        cacheConfigs.put("permissions:all", defaultConfig.entryTtl(Duration.ofHours(1L)).prefixCacheNameWith("auth:v2:permissions:all:"));
 
         return RedisCacheManager.builder(connectionFactory)
                 .cacheDefaults(defaultConfig)

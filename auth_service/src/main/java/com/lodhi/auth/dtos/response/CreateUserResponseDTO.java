@@ -45,6 +45,8 @@ public class CreateUserResponseDTO {
     @Builder.Default
     private Provider provider = Provider.LOCAL;
 
+    private boolean profileComplete;
+
     @Builder.Default
     private Set<RoleDTO> roles = new HashSet<>();
 }

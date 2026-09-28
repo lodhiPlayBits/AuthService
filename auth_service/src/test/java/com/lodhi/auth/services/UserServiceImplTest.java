@@ -46,6 +46,7 @@ class UserServiceImplTest {
                 .id(1L)
                 .email("test@example.com")
                 .password("encoded_password")
+                .provider(com.lodhi.auth.enums.Provider.LOCAL)
                 .build();
     }
 
@@ -289,6 +290,8 @@ class UserServiceImplTest {
         req.setCurrentPassword("encoded_password");
         req.setNewPassword("new_password");
         req.setConfirmPassword("different_password");
+
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
 
         assertThrows(ValidationException.class, () -> userService.changePassword(1L, req));
     }

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
+import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
 // ── Reusable Components ──────────────────────────────────────────
 
@@ -71,6 +73,7 @@ function App() {
   ];
 
   return (
+    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
     <div className="app-container">
       <header className="app-header">
         <h1>Auth Service API Tester</h1>
@@ -79,12 +82,12 @@ function App() {
 
       {/* Token Bar */}
       <div className="token-bar glass-container">
-        <label>Bearer Token</label>
+        <label>Bearer Token <small style={{fontWeight:'normal', color:'#a0aec0'}}>(Auto-fills upon successful login)</small></label>
         <div className="token-input-row">
           <input
             type="text"
             className="form-input token-input"
-            placeholder="Paste or login to auto-fill..."
+            placeholder="No token yet. Login or Register below to auto-fill..."
             value={token}
             onChange={(e) => saveToken(e.target.value)}
           />
@@ -112,6 +115,7 @@ function App() {
         {activeTab === 'admin' && <AdminTab token={token} />}
       </div>
     </div>
+    </GoogleOAuthProvider>
   );
 }
 
@@ -176,8 +180,74 @@ function AuthTab({ token, onToken }) {
     setLogoutAllLoading(false);
   };
 
+  // ── Google OAuth ──
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [googleRes, setGoogleRes] = useState(null);
+  const [needsProfileCompletion, setNeedsProfileCompletion] = useState(false);
+  const [profileForm, setProfileForm] = useState({ phoneNumber: '', gender: 'MALE', username: '', name: '' });
+
+  const handleGoogleSuccess = async (credentialResponse) => {
+    setGoogleLoading(true);
+    const res = await apiCall('POST', '/auth/oauth2/google', { idToken: credentialResponse.credential });
+    setGoogleRes(res);
+    setGoogleLoading(false);
+    
+    if (res.ok && res.data) {
+      if (res.data.profileComplete) {
+        onToken(res.data.accessToken);
+        setNeedsProfileCompletion(false);
+      } else {
+        onToken(res.data.accessToken); 
+        setNeedsProfileCompletion(true);
+      }
+    }
+  };
+
+  const handleCompleteProfile = async () => {
+    setGoogleLoading(true);
+    const res = await apiCall('PATCH', '/auth/oauth2/complete-profile', profileForm, token);
+    setGoogleRes(res);
+    setGoogleLoading(false);
+    if (res.ok) {
+      setNeedsProfileCompletion(false);
+    }
+  };
+
   return (
     <div className="endpoints-grid">
+      
+      {/* ── GOOGLE AUTH (Shared Complete Profile Flow) ── */}
+      {needsProfileCompletion && (
+        <EndpointCard method="PATCH" path="/api/v1/auth/oauth2/complete-profile" description="Complete Your Google Profile">
+          <div className="profile-completion-box" style={{padding: '1rem', border: '1px solid #4a5568', borderRadius: '8px', background: 'rgba(0,0,0,0.2)'}}>
+            <h3 style={{marginTop: 0, marginBottom: '1rem', color: '#63b3ed'}}>Almost there!</h3>
+            <p style={{fontSize: '0.875rem', marginBottom: '1rem'}}>Please provide the remaining required details to complete your registration.</p>
+            <div className="form-row">
+              <input className="form-input" placeholder="Phone (10 digits)" value={profileForm.phoneNumber} onChange={e => setProfileForm({...profileForm, phoneNumber: e.target.value})} />
+              <select className="form-input" value={profileForm.gender} onChange={e => setProfileForm({...profileForm, gender: e.target.value})}>
+                <option value="MALE">MALE</option><option value="FEMALE">FEMALE</option><option value="OTHER">OTHER</option>
+              </select>
+            </div>
+            <div className="form-row">
+              <input className="form-input" placeholder="Username (Optional)" value={profileForm.username} onChange={e => setProfileForm({...profileForm, username: e.target.value})} />
+              <input className="form-input" placeholder="Name (Optional)" value={profileForm.name} onChange={e => setProfileForm({...profileForm, name: e.target.value})} />
+            </div>
+            <button className="btn" onClick={handleCompleteProfile} disabled={googleLoading}>
+              {googleLoading ? <div className="spinner"/> : 'Submit Details'}
+            </button>
+            <ResponsePanel response={googleRes} loading={googleLoading} />
+          </div>
+        </EndpointCard>
+      )}
+      {/* GOOGLE AUTH */}
+      <EndpointCard method="POST" path="/api/v1/auth/oauth2/google" description="Authenticate using Google OAuth">
+        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+          <GoogleLogin text="signin_with" onSuccess={handleGoogleSuccess} onError={() => setGoogleRes({ ok: false, status: 0, statusText: 'Google Auth Failed', data: 'Login Failed' })} />
+          <GoogleLogin text="signup_with" onSuccess={handleGoogleSuccess} onError={() => setGoogleRes({ ok: false, status: 0, statusText: 'Google Auth Failed', data: 'Login Failed' })} />
+        </div>
+        {googleRes && !needsProfileCompletion && <ResponsePanel response={googleRes} loading={googleLoading} />}
+      </EndpointCard>
+
       {/* REGISTER */}
       <EndpointCard method="POST" path="/api/v1/auth/register" description="Register a new user account (public)">
         <div className="form-row">
