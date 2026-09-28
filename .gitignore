@@ -3,7 +3,17 @@
 *.iws
 *.iml
 *.ipr
+
+### Vim ###
 *.swp
+*.swo
+
+### Environment Files ###
+.env
+.env.*
+
+loadtest/
+build.log
 
 ### NetBeans ###
 /nbproject/private/
@@ -17,17 +27,3 @@ build/
 
 ### VS Code ###
 .vscode/
-.idea/
-
-### Vim ###
-*.swp
-*.swo
-
-### Environment Files ###
-.env
-.env.*
-
-loadtest/
-
-build.log
-
