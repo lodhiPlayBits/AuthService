@@ -38,6 +38,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     );
 
     private final JwtService jwtService;
+    private final com.lodhi.auth.services.TokenBlacklistService tokenBlacklistService;
 
     @Override
     protected void doFilterInternal(
@@ -73,8 +74,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 return;
             }
 
-            String userId = claims.getSubject();
+            // 🛑 Check Redis blacklist — covers logout / forced revocation
             String jti = claims.getId();
+            if (tokenBlacklistService.isBlacklisted(jti)) {
+                log.info("Rejected blacklisted access token: jti={}", jti);
+                response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED);
+                response.setContentType("application/json");
+                response.getWriter().write("{\"error\":\"Token has been revoked. Please log in again.\"}");
+                return;
+            }
+
+            String userId = claims.getSubject();
+            // jti already extracted above for blacklist check
             Object rolesClaim = claims.get("roles");
             Object permissionsClaim = claims.get("permissions");
 

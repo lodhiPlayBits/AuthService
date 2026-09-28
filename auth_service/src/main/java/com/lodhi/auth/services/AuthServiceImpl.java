@@ -43,6 +43,7 @@ public class AuthServiceImpl implements AuthService {
     private final AuditService auditService;
     private final com.lodhi.auth.security.TokenHashService tokenHashService;
     private final RefreshTokenFamilyService refreshTokenFamilyService;
+    private final TokenBlacklistService tokenBlacklistService;
 
     @Override
     public CreateUserResponseDTO registeruser(CreateUserRequestDTO createUserRequestDTO) {
@@ -132,6 +133,9 @@ public class AuthServiceImpl implements AuthService {
             String familyId = storedToken.getFamilyId();
             refreshTokenFamilyService.revokeFamily(familyId);
             
+            // 🛑 Blacklist the current access token so it stops working immediately
+            blacklistCurrentAccessToken(request);
+            
             // Clear the refresh token cookie
             cookieService.clearRefreshCookie(response);
             
@@ -151,19 +155,54 @@ public class AuthServiceImpl implements AuthService {
     public void logoutAllDevices(Long userId, HttpServletRequest request, HttpServletResponse response) {
         // Revoke all refresh tokens for this user by setting revoked = true
         int revokedCount = refreshTokenRepository.revokeAllForUser(userId);
-        
+
+        // 🛑 Blacklist the current access token so it stops working immediately
+        blacklistCurrentAccessToken(request);
+
         // Clear the refresh token cookie
         cookieService.clearRefreshCookie(response);
-        
+
         // Get user info for audit (fetch by ID with roles for audit context)
         User user = userRepository.findByIdWithRolesAndPermissions(userId)
                 .orElseThrow(() -> new BadCredentialsException("User not found"));
-        
+
         // Log logout from all devices
         auditService.logLogout(userId, user.getEmail(), request);
-        
+
         // Log for monitoring
         org.slf4j.LoggerFactory.getLogger(AuthServiceImpl.class)
             .info("User logged out from all devices: userId={}, tokensRevoked={}", userId, revokedCount);
     }
-}
+
+    /**
+     * Extracts the access token from the Authorization header and blacklists its JTI
+     * in Redis with a TTL matching the token's remaining validity.
+     *
+     * <p>This ensures the access token is immediately revoked even though JWTs are
+     * stateless and would otherwise remain valid until their natural expiry.
+     *
+     * @param request HTTP request containing the Authorization header
+     */
+    private void blacklistCurrentAccessToken(HttpServletRequest request) {
+        try {
+            String header = request.getHeader("Authorization");
+            if (header == null || !header.startsWith("Bearer ")) {
+                return;
+            }
+            String accessToken = header.substring(7);
+            Jws<io.jsonwebtoken.Claims> jws = jwtService.parseToken(accessToken);
+            io.jsonwebtoken.Claims claims = jws.getPayload();
+
+            if (jwtService.isAccessToken(claims)) {
+                String jti = claims.getId();
+                long expMillis = claims.getExpiration().getTime();
+                tokenBlacklistService.blacklistToken(jti, expMillis);
+            }
+        } catch (Exception e) {
+            // Non-fatal: access token may be absent or already expired.
+            // Refresh token revocation already protects the session.
+            org.slf4j.LoggerFactory.getLogger(AuthServiceImpl.class)
+                .debug("Could not blacklist access token during logout: {}", e.getMessage());
+        }
+    }
+}

@@ -36,7 +36,7 @@ public class AdminInitializer implements CommandLineRunner {
     @Value("${admin.username:Admin}")
     private String adminUsername;
 
-    @Value("${admin.password:admin}")
+    @Value("${admin.password}")
     private String adminPassword;
 
     @Value("${admin.phoneNumber:8595007855}")
