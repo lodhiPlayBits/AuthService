@@ -13,13 +13,7 @@ import com.lodhi.auth.model.RefreshToken;
 
 public interface RefreshTokenRepository extends JpaRepository<RefreshToken,UUID> {
     
-    /**
-     * Find refresh token by JTI (legacy - prefer findByJtiHash)
-     * @deprecated Use findByJtiHash for secure lookup
-     */
-    @Deprecated
-    Optional<RefreshToken> findByJti(String jti);
-    
+
     /**
      * Find refresh token by hashed JTI (secure lookup method)
      */
@@ -42,5 +36,12 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken,UUID>
     @Query("UPDATE RefreshToken r SET r.revoked = true WHERE r.user.id = :userId AND r.revoked = false")
     int revokeAllForUser(@Param("userId") Long userId);
 
+
+    /**
+     * Delete all tokens that expired before the given time
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("DELETE FROM RefreshToken r WHERE r.expiresAt < :time")
+    int deleteByExpiresAtBefore(@Param("time") Instant time);
 
 }

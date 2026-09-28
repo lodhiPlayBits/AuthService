@@ -133,7 +133,6 @@ class AuthServiceImplTest {
         when(tokenHashService.hashJti(jti)).thenReturn(jtiHash);
         
         RefreshToken storedToken = RefreshToken.builder()
-                .jti(jti)
                 .familyId("familyId")
                 .user(user)
                 .build();

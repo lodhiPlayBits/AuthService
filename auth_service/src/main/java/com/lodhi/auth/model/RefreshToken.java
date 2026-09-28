@@ -24,13 +24,21 @@ import lombok.Setter;
         name = "refresh_tokens",
         indexes = {
                 @Index(
-                        name = "refresh_token_jti_idx",
-                        columnList = "jti",
+                        name = "refresh_token_jti_hash_idx",
+                        columnList = "jti_hash",
                         unique = true
+                ),
+                @Index(
+                        name = "refresh_token_family_id_idx",
+                        columnList = "family_id"
                 ),
                 @Index(
                         name = "refresh_token_user_id_idx",
                         columnList = "user_id"
+                ),
+                @Index(
+                        name = "refresh_token_expires_at_idx",
+                        columnList = "expires_at"
                 )
         }
 )
@@ -44,9 +52,6 @@ public class RefreshToken {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
-
-    @Column(nullable = false, unique = true)
-    private String jti;
 
     @Column(name = "jti_hash", unique = true, length = 64)
     private String jtiHash;

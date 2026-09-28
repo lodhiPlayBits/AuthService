@@ -135,7 +135,7 @@ class RoleServiceImplTest {
     void testDeleteRole_Success() {
         when(roleRepository.findByIdWithPermissions(role.getId())).thenReturn(Optional.of(role));
         roleService.deleteRole(role.getId());
-        verify(roleRepository).delete(role);
+        verify(roleRepository).deleteById(role.getId());
         verify(auditService).logServiceEvent(isNull(), eq("admin_user"), any(), eq(true), anyString());
     }
 

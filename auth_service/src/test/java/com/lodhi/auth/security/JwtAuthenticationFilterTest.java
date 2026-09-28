@@ -35,6 +35,9 @@ class JwtAuthenticationFilterTest {
     private JwtService jwtService;
 
     @Mock
+    private com.lodhi.auth.services.TokenBlacklistService tokenBlacklistService;
+
+    @Mock
     private FilterChain filterChain;
 
     @Mock
