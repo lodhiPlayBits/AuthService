@@ -1,6 +1,7 @@
 package com.lodhi.auth.respositories;
 
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -12,4 +13,5 @@ import com.lodhi.auth.model.Permission;
 public interface PermissionRepository extends JpaRepository<Permission, UUID> {
     Optional<Permission> findByName(String name);
     boolean existsByName(String name);
+    Set<Permission> findByNameIn(Set<String> names);
 }

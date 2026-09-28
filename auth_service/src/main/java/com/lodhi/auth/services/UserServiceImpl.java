@@ -34,7 +34,7 @@ public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
     private final ModelMapper modelMapper;
-    private final RoleService roleService;
+    private final RoleServiceImpl roleService;  // impl for getRoleEntityByName()
     private final PasswordEncoder passwordEncoder;
 
     @Override
@@ -61,16 +61,18 @@ public class UserServiceImpl implements UserService {
         user.setEnabled(true);
         user.setPassword(passwordEncoder.encode(createUserRequestDTO.getPassword()));
 
-        // Assign default USER role
-        Role userRole = roleService.getRoleByName(SystemRoles.USER);
-        user.setRoles(Set.of(userRole));
+        // Assign default USER role — save user FIRST to get DB user_id (FK constraint),
+        // then attach role, same pattern used in AdminInitializer and GoogleOAuth2Service.
+        Role userRole = roleService.getRoleEntityByName(SystemRoles.USER);
 
         // Set provider (default to LOCAL if not specified)
         user.setProvider(createUserRequestDTO.getProvider() != null ? createUserRequestDTO.getProvider() : Provider.LOCAL);
 
         // Save user - catch DB constraint violations for concurrent registrations
         try {
-            User savedUser = userRepository.save(user);
+            User savedUser = userRepository.saveAndFlush(user);
+            savedUser.setRoles(new java.util.HashSet<>(Set.of(userRole)));
+            savedUser = userRepository.save(savedUser);
             return modelMapper.map(savedUser, CreateUserResponseDTO.class);
         } catch (org.springframework.dao.DataIntegrityViolationException ex) {
             // Race condition: constraint violation despite existsBy check
@@ -210,10 +212,10 @@ public class UserServiceImpl implements UserService {
                 .orElseThrow(() -> new ResourceNotFoundException("User", userId));
         
         Set<Role> roles = roleIds.stream()
-                .map(roleService::getRoleById)
+                .map(roleService::getRoleEntityById)
                 .collect(java.util.stream.Collectors.toSet());
         
-        user.setRoles(roles);
+        user.setRoles(new java.util.HashSet<>(roles));
         User updatedUser = userRepository.save(user);
         
         // Audit log (this is a high-privilege operation)
