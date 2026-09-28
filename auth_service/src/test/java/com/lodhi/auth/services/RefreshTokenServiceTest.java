@@ -75,7 +75,6 @@ class RefreshTokenServiceTest {
 
         refreshTokenEntity = RefreshToken.builder()
                 .id(java.util.UUID.randomUUID())
-                .jti("old-jti")
                 .jtiHash("old-jti-hash")
                 .familyId("family-id")
                 .user(user)

@@ -115,7 +115,6 @@ public class RefreshTokenService {
         }
 
         RefreshToken newEntity = RefreshToken.builder()
-                .jti(newJti)
                 .jtiHash(newJtiHash)
                 .familyId(familyId)
                 .user(user)
@@ -138,5 +137,20 @@ public class RefreshTokenService {
                 "Bearer",
                 mapper.map(user, CreateUserResponseDTO.class)
         );
+    }
+    
+    /**
+     * Periodically clean up expired refresh tokens from the database.
+     * Runs every day at 3:00 AM.
+     */
+    @org.springframework.scheduling.annotation.Scheduled(cron = "0 0 3 * * ?")
+    @Transactional
+    public void cleanupExpiredTokens() {
+        // Retain tokens for 7 days after expiration for audit and reuse detection
+        Instant cutoffTime = Instant.now().minus(java.time.Duration.ofDays(7));
+        int deletedCount = refreshTokenRepository.deleteByExpiresAtBefore(cutoffTime);
+        if (deletedCount > 0) {
+            log.info("Cleaned up {} expired refresh tokens from the database", deletedCount);
+        }
     }
 }

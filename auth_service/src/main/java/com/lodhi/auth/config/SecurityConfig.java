@@ -84,7 +84,7 @@ public class SecurityConfig {
                 .requestMatchers("/error")
                 .permitAll()
                 .requestMatchers("/actuator/**")
-                .permitAll()
+                .hasRole("ADMIN")
                 .anyRequest()
                 .authenticated()
         );

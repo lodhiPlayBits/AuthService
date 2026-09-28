@@ -255,7 +255,6 @@ public class GoogleOAuth2Service {
         String jtiHash  = tokenHashService.hashJti(jti);
 
         RefreshToken refreshTokenEntity = RefreshToken.builder()
-                .jti(jti)
                 .jtiHash(jtiHash)
                 .familyId(familyId)
                 .user(user)

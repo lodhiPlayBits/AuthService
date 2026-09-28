@@ -106,7 +106,6 @@ public class RoleServiceImpl implements RoleService {
 
     @Override
     @Transactional(readOnly = true)
-    @Cacheable(value = "roles:all")
     public Page<RoleResponseDTO> getAllRoles(Pageable pageable) {
         int maxPageSize = 100;
         if (pageable.getPageSize() > maxPageSize) {
@@ -128,8 +127,7 @@ public class RoleServiceImpl implements RoleService {
             // Evicting only by roleId would leave the name-keyed entry stale.
             // e.g. roles::USER can persist while roles::<UUID> is evicted.
             // Since permissions are security-sensitive, we always wipe the whole cache.
-            @CacheEvict(value = "roles", allEntries = true),
-            @CacheEvict(value = "roles:all", allEntries = true)
+            @CacheEvict(value = "roles", allEntries = true)
     })
     public RoleResponseDTO createRole(CreateRoleRequestDTO requestDTO) {
         String roleName = requestDTO.getRoleName().toUpperCase().trim();
@@ -162,9 +160,7 @@ public class RoleServiceImpl implements RoleService {
     @Caching(evict = {
             // Wipe entire roles cache — a deleted role may have been cached under both
             // its name key and its UUID key. allEntries ensures no stale entry remains.
-            @CacheEvict(value = "roles", allEntries = true),
-            @CacheEvict(value = "roles:all", allEntries = true),
-            @CacheEvict(value = "user-permissions", allEntries = true)
+            @CacheEvict(value = "roles", allEntries = true)
     })
     public void deleteRole(UUID roleId) {
         RoleCache cache = getRoleById(roleId);
@@ -186,8 +182,7 @@ public class RoleServiceImpl implements RoleService {
             // P0 security fix: permissions changed → evict ALL role cache entries.
             // If we only evict by roleId (UUID key), the name-keyed entry (e.g. roles::USER)
             // remains stale and callers will see outdated permissions until TTL expires.
-            @CacheEvict(value = "roles", allEntries = true),
-            @CacheEvict(value = "user-permissions", allEntries = true)
+            @CacheEvict(value = "roles", allEntries = true)
     })
     public RoleResponseDTO assignPermissionsToRole(UUID roleId, Set<UUID> permissionIds) {
         // Fetch fresh entity from DB (not from cache) for mutation
@@ -214,8 +209,7 @@ public class RoleServiceImpl implements RoleService {
     @Caching(evict = {
             // P0 security fix: same reasoning as assignPermissionsToRole above.
             // allEntries evicts both name-keyed (roles::USER) and UUID-keyed (roles::<uuid>) entries.
-            @CacheEvict(value = "roles", allEntries = true),
-            @CacheEvict(value = "user-permissions", allEntries = true)
+            @CacheEvict(value = "roles", allEntries = true)
     })
     public RoleResponseDTO revokePermissionsFromRole(UUID roleId, Set<UUID> permissionIds) {
         // Fetch fresh entity from DB (not from cache) for mutation

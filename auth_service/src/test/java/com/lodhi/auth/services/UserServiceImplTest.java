@@ -34,6 +34,7 @@ class UserServiceImplTest {
     @Mock private ModelMapper modelMapper;
     @Mock private RoleServiceImpl roleService;
     @Mock private PasswordEncoder passwordEncoder;
+    @Mock private com.lodhi.auth.respositories.RefreshTokenRepository refreshTokenRepository;
 
     @InjectMocks
     private UserServiceImpl userService;
@@ -68,6 +69,7 @@ class UserServiceImplTest {
 
         Role userRole = new Role();
         when(roleService.getRoleEntityByName(SystemRoles.USER)).thenReturn(userRole);
+        when(userRepository.saveAndFlush(any(User.class))).thenReturn(user);
         when(userRepository.save(any(User.class))).thenReturn(user);
 
         CreateUserResponseDTO expectedResponse = new CreateUserResponseDTO();
@@ -132,7 +134,7 @@ class UserServiceImplTest {
         when(modelMapper.map(req, User.class)).thenReturn(new User());
         when(roleService.getRoleEntityByName(SystemRoles.USER)).thenReturn(new Role());
 
-        when(userRepository.save(any(User.class)))
+        when(userRepository.saveAndFlush(any(User.class)))
             .thenThrow(new org.springframework.dao.DataIntegrityViolationException("duplicate key value violates unique constraint \"user_table_email_key\""));
 
         assertThrows(UserAlreadyExistsException.class, () -> userService.createUser(req));
@@ -151,7 +153,7 @@ class UserServiceImplTest {
         when(modelMapper.map(req, User.class)).thenReturn(new User());
         when(roleService.getRoleEntityByName(SystemRoles.USER)).thenReturn(new Role());
 
-        when(userRepository.save(any(User.class)))
+        when(userRepository.saveAndFlush(any(User.class)))
             .thenThrow(new org.springframework.dao.DataIntegrityViolationException("duplicate key value violates unique constraint \"user_table_username_key\""));
 
         assertThrows(UserAlreadyExistsException.class, () -> userService.createUser(req));
@@ -170,7 +172,7 @@ class UserServiceImplTest {
         when(modelMapper.map(req, User.class)).thenReturn(new User());
         when(roleService.getRoleEntityByName(SystemRoles.USER)).thenReturn(new Role());
 
-        when(userRepository.save(any(User.class)))
+        when(userRepository.saveAndFlush(any(User.class)))
             .thenThrow(new org.springframework.dao.DataIntegrityViolationException("user_table_phone_number_key"));
 
         assertThrows(UserAlreadyExistsException.class, () -> userService.createUser(req));
@@ -189,7 +191,7 @@ class UserServiceImplTest {
         when(modelMapper.map(req, User.class)).thenReturn(new User());
         when(roleService.getRoleEntityByName(SystemRoles.USER)).thenReturn(new Role());
 
-        when(userRepository.save(any(User.class)))
+        when(userRepository.saveAndFlush(any(User.class)))
             .thenThrow(new org.springframework.dao.DataIntegrityViolationException("some other constraint"));
 
         assertThrows(UserAlreadyExistsException.class, () -> userService.createUser(req));
@@ -281,6 +283,7 @@ class UserServiceImplTest {
         userService.changePassword(1L, req);
 
         verify(userRepository).save(user);
+        verify(refreshTokenRepository).revokeAllForUser(1L);
         assertEquals("new_encoded", user.getPassword());
     }
 
@@ -362,5 +365,28 @@ class UserServiceImplTest {
         assertTrue(user.getRoles().contains(mockRole));
         
         org.springframework.security.core.context.SecurityContextHolder.clearContext();
+    }
+    
+    @Test
+    void testUpdateUserStatus_Disable_Success() {
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        
+        userService.updateUserStatus(1L, false);
+        
+        verify(userRepository).save(user);
+        assertFalse(user.isEnabled());
+        verify(refreshTokenRepository).revokeAllForUser(1L);
+    }
+    
+    @Test
+    void testUpdateUserStatus_Enable_Success() {
+        user.setEnabled(false);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        
+        userService.updateUserStatus(1L, true);
+        
+        verify(userRepository).save(user);
+        assertTrue(user.isEnabled());
+        verify(refreshTokenRepository, never()).revokeAllForUser(1L);
     }
 }

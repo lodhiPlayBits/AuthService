@@ -25,6 +25,7 @@ import com.lodhi.auth.exceptions.validation.ValidationException;
 import com.lodhi.auth.model.Role;
 import com.lodhi.auth.model.User;
 import com.lodhi.auth.respositories.UserRepository;
+import com.lodhi.auth.respositories.RefreshTokenRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -36,6 +37,7 @@ public class UserServiceImpl implements UserService {
     private final ModelMapper modelMapper;
     private final RoleServiceImpl roleService;  // impl for getRoleEntityByName()
     private final PasswordEncoder passwordEncoder;
+    private final RefreshTokenRepository refreshTokenRepository;
 
     @Override
     public CreateUserResponseDTO createUser(CreateUserRequestDTO createUserRequestDTO) {
@@ -96,7 +98,6 @@ public class UserServiceImpl implements UserService {
 
     @Transactional(readOnly = true)
     @Override
-    @Cacheable(value={"users:email"}, key="#email")
     public CreateUserResponseDTO getUserByEmail(String email) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("User", email));
@@ -105,7 +106,6 @@ public class UserServiceImpl implements UserService {
 
     @Transactional(readOnly = true)
     @Override
-    @Cacheable(value={"users"}, key="#id")
     public CreateUserResponseDTO getUserById(Long id) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User", id));
@@ -114,7 +114,6 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    @Caching(evict={@CacheEvict(value={"users"}, key="#id"), @CacheEvict(value={"user-permissions"}, key="#id")})
     public CreateUserResponseDTO updateUser(UpdateUserRequestDTO updateUserRequestDTO, Long id) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User", id));
@@ -141,7 +140,6 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    @Caching(evict={@CacheEvict(value={"users"}, key="#id"), @CacheEvict(value={"users:email"}, allEntries=true), @CacheEvict(value={"user-permissions"}, key="#id")})
     public void deleteUser(Long id) {
         if (!userRepository.existsById(id)) {
             throw new ResourceNotFoundException("User", id);
@@ -151,7 +149,6 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    @CacheEvict(value={"users"}, key="#userId")
     public void changePassword(Long userId, ChangePasswordRequestDTO requestDTO) {
         // Load user
         User user = userRepository.findById(userId)
@@ -184,6 +181,9 @@ public class UserServiceImpl implements UserService {
         user.setPassword(passwordEncoder.encode(requestDTO.getNewPassword()));
         userRepository.save(user);
         
+        // Revoke all existing sessions on password change (Security best practice)
+        int tokensRevoked = refreshTokenRepository.revokeAllForUser(userId);
+        
         // TODO: Add audit logging when AuditService is available
         // auditService.logServiceEvent(userId, username, AuditEventType.PASSWORD_CHANGED, true, "Password changed");
     }
@@ -206,7 +206,6 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    @Caching(evict={@CacheEvict(value={"users"}, key="#userId"), @CacheEvict(value={"user-permissions"}, key="#userId")})
     public CreateUserResponseDTO assignRolesToUser(Long userId, Set<java.util.UUID> roleIds) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", userId));
@@ -227,5 +226,20 @@ public class UserServiceImpl implements UserService {
         // Note: Assuming auditService will be injected
         
         return modelMapper.map(updatedUser, CreateUserResponseDTO.class);
+    }
+
+    @Override
+    @Transactional
+    public void updateUserStatus(Long userId, boolean enabled) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", userId));
+        
+        user.setEnabled(enabled);
+        userRepository.save(user);
+        
+        // If account is disabled, revoke all existing sessions immediately
+        if (!enabled) {
+            refreshTokenRepository.revokeAllForUser(userId);
+        }
     }
 }

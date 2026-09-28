@@ -61,6 +61,7 @@ class AdminInitializerTest {
         role.setName(SystemRoles.ADMIN);
         when(roleRepository.findByName(SystemRoles.ADMIN)).thenReturn(Optional.of(role));
         when(passwordEncoder.encode("admin")).thenReturn("encoded_admin_pass");
+        when(userRepository.saveAndFlush(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         adminInitializer.run();
 
