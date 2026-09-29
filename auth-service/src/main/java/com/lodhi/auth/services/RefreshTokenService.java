@@ -44,7 +44,7 @@ public class RefreshTokenService {
         Claims claims = jws.getPayload();
 
         if (!jwtService.isRefreshToken(claims)) {
-            throw new BadCredentialsException("Invalid refresh token");
+            throw new BadCredentialsException("Invalid refresh token - not a refresh token");
         }
 
         String jti = claims.getId();
@@ -53,11 +53,13 @@ public class RefreshTokenService {
         // Hash the JTI for secure lookup
         String jtiHash = tokenHashService.hashJti(jti);
 
+        org.slf4j.LoggerFactory.getLogger(RefreshTokenService.class).info("SEARCHING REFRESH TOKEN: JTI={}, Hash={}", jti, jtiHash);
+
         RefreshToken storedRefreshToken = refreshTokenRepository.findByJtiHash(jtiHash)
-                .orElseThrow(() -> new BadCredentialsException("Invalid refresh token"));
+                .orElseThrow(() -> new BadCredentialsException("Invalid refresh token - not found in DB. JTI=" + jti + ", Hash=" + jtiHash));
 
         if (!storedRefreshToken.getUser().getId().equals(userId)) {
-            throw new BadCredentialsException("Invalid refresh token");
+            throw new BadCredentialsException("Invalid refresh token - user mismatch");
         }
 
         // Explicit expiration check (defense in depth)
@@ -89,7 +91,7 @@ public class RefreshTokenService {
         // any proxy we held before this point, so don't reuse storedRefreshToken.getUser().
         // Use fetch join to load roles and permissions for token generation
         User user = userRepository.findByIdWithRolesAndPermissions(userId)
-                .orElseThrow(() -> new BadCredentialsException("Invalid refresh token"));
+                .orElseThrow(() -> new BadCredentialsException("Invalid refresh token - user not found in DB"));
 
         // Check account status: prevent disabled or locked accounts from refreshing tokens
         if (!user.isEnabled()) {
@@ -152,5 +154,9 @@ public class RefreshTokenService {
         if (deletedCount > 0) {
             log.info("Cleaned up {} expired refresh tokens from the database", deletedCount);
         }
+    }    public java.util.List<String> debugGetAllTokens() {
+        return refreshTokenRepository.findAll().stream()
+                .map(r -> "JTI: " + r.getJtiHash() + " Revoked: " + r.isRevoked() + " User: " + r.getUser().getId())
+                .toList();
     }
 }

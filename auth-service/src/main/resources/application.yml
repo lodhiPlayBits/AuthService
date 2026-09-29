@@ -111,6 +111,19 @@ admin:
   phoneNumber: ${ADMIN_PHONE:8595007855}
 
 # =====================================================
+# Authentication Configuration
+# =====================================================
+auth:
+  # BCrypt concurrency control
+  bcrypt:
+    # Maximum concurrent BCrypt password checks
+    # Prevents CPU overload during high authentication load
+    # t3.large (2 vCPUs): Use 4-6 concurrent BCrypt operations
+    # Each BCrypt takes ~100-300ms CPU time
+    # Formula: (vCPUs × 2) to (vCPUs × 3)
+    max-concurrent: ${BCRYPT_MAX_CONCURRENT:6}
+
+# =====================================================
 # Logging Configuration
 # =====================================================
 logging:

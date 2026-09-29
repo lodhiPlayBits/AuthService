@@ -35,7 +35,7 @@ public class CookieService {
             @Value("${security.jwt.cookie-same-site}")
             String cookieSameSite,
             
-            @Value("${security.jwt.cookie-path:/api/v1/auth/refresh}")
+            @Value("${security.jwt.cookie-path:/api/v1/auth}")
             String cookiePath
     ) {
         this.refreshTokenCookieName = refreshTokenCookieName;

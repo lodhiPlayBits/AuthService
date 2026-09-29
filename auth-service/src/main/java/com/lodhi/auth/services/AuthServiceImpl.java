@@ -83,7 +83,10 @@ public class AuthServiceImpl implements AuthService {
                     .revoked(false)
                     .build();
             
-            refreshTokenRepository.save(refreshTokenEntity);
+            refreshTokenRepository.saveAndFlush(refreshTokenEntity);
+            
+            org.slf4j.LoggerFactory.getLogger(AuthServiceImpl.class).info("SAVING REFRESH TOKEN: JTI={}, Hash={}", jti, jtiHash);
+
             
             // Generate JWT tokens
             String accessToken = jwtService.generateAccessToken(user);
