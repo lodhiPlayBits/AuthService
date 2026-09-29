@@ -30,6 +30,7 @@ import tools.jackson.databind.ObjectMapper;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final com.lodhi.auth.security.CsrfCookieFilter csrfCookieFilter;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -99,7 +100,8 @@ public class SecurityConfig {
                 response.getWriter().write(objectMapper.writeValueAsString(errormap));
             });
         })
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(csrfCookieFilter, org.springframework.security.web.authentication.www.BasicAuthenticationFilter.class);
 
         return http
                 .build();
@@ -107,9 +109,8 @@ public class SecurityConfig {
 
 
     @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration configuration) {
-        return configuration.getAuthenticationManager();
-
+    public AuthenticationManager authenticationManager(com.lodhi.auth.security.CustomAuthenticationProvider customAuthProvider) {
+        return new org.springframework.security.authentication.ProviderManager(java.util.List.of(customAuthProvider));
     }
 
 }

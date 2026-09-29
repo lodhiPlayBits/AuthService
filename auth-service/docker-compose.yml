@@ -93,6 +93,9 @@ services:
       REDIS_POOL_MAX_WAIT: ${REDIS_POOL_MAX_WAIT:--1ms}
       REDIS_SHUTDOWN_TIMEOUT: ${REDIS_SHUTDOWN_TIMEOUT:-100ms}
       CACHE_TTL: ${CACHE_TTL:-3600000}
+
+      # BCrypt Configuration
+      BCRYPT_MAX_CONCURRENT: ${BCRYPT_MAX_CONCURRENT:-3}
     # Direct port access — uncomment for local dev without nginx
     # ports:
     #   - "8080:8080"
@@ -102,6 +105,16 @@ services:
       - ./logs:/var/log/auth-service
     networks:
       - authnet
+    # Resource limits for t3.large (2 vCPUs, 8GB RAM)
+    # Allocate 100% CPU to auth-service (nginx+redis use ~3%, plenty of headroom)
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'      # 100% of 2 vCPUs (nginx/redis only use ~3%)
+          memory: 4G       # 4GB (50% of total RAM)
+        reservations:
+          cpus: '1.0'      # Minimum 1 vCPU
+          memory: 2G       # Minimum 2GB
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
       interval: 30s

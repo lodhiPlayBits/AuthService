@@ -37,6 +37,7 @@ public class UserServiceImpl implements UserService {
     private final ModelMapper modelMapper;
     private final RoleServiceImpl roleService;  // impl for getRoleEntityByName()
     private final PasswordEncoder passwordEncoder;
+    private final BCryptService bcryptService;
     private final RefreshTokenRepository refreshTokenRepository;
 
     @Override
@@ -148,7 +149,6 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    @Transactional
     public void changePassword(Long userId, ChangePasswordRequestDTO requestDTO) {
         // Load user
         User user = userRepository.findById(userId)
@@ -167,28 +167,34 @@ public class UserServiceImpl implements UserService {
             throw new ValidationException("New password and confirmation do not match");
         }
         
-        // Verify current password
-        if (!passwordEncoder.matches(requestDTO.getCurrentPassword(), user.getPassword())) {
+        // Verify current password via bounded queue
+        if (!bcryptService.matches(requestDTO.getCurrentPassword(), user.getPassword())) {
             throw new ValidationException("Current password is incorrect");
         }
         
         // Prevent reusing the same password
-        if (passwordEncoder.matches(requestDTO.getNewPassword(), user.getPassword())) {
+        if (bcryptService.matches(requestDTO.getNewPassword(), user.getPassword())) {
             throw new ValidationException("New password must be different from current password");
         }
         
-        // Encode and set new password
-        user.setPassword(passwordEncoder.encode(requestDTO.getNewPassword()));
-        userRepository.save(user);
-        
-        // Revoke all existing sessions on password change (Security best practice)
-        int tokensRevoked = refreshTokenRepository.revokeAllForUser(userId);
+        // Save using separate transactional method
+        saveNewPassword(userId, passwordEncoder.encode(requestDTO.getNewPassword()));
         
         // TODO: Add audit logging when AuditService is available
         // auditService.logServiceEvent(userId, username, AuditEventType.PASSWORD_CHANGED, true, "Password changed");
     }
 
+    @Transactional
+    protected void saveNewPassword(Long userId, String encodedPassword) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", userId));
+        user.setPassword(encodedPassword);
+        userRepository.save(user);
+        refreshTokenRepository.revokeAllForUser(userId);
+    }
+
     @Override
+    @Transactional(readOnly = true)
     public Page<CreateUserResponseDTO> getAllUsers(Pageable pageable) {
         // Enforce maximum page size to prevent unbounded queries
         int maxPageSize = 100;

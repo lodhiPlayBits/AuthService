@@ -54,7 +54,7 @@ public class GlobalExceptionHandler {
     // Generic message on purpose: prevents username enumeration.
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<ErrorMessage> handleAuthenticationException(AuthenticationException ex) {
-        log.warn("Authentication failed: {}", ex.getClass().getSimpleName());
+        log.warn("Authentication failed: {} - {}", ex.getClass().getSimpleName(), ex.getMessage());
         ErrorMessage body = ErrorMessage.of("Invalid username or password", ErrorCode.UNAUTHORIZED, HttpStatus.UNAUTHORIZED);
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
     }
