@@ -19,13 +19,14 @@ public class AuditService {
     private final AuditLogRepository auditLogRepository;
 
     @Async
-    public void logEvent(
+    public void logEventAsync(
             Long userId,
             String username,
             AuditEventType eventType,
             boolean success,
             String details,
-            HttpServletRequest request
+            String ipAddress,
+            String userAgent
     ) {
         try {
             AuditLog auditLog = AuditLog.builder()
@@ -34,8 +35,8 @@ public class AuditService {
                     .eventType(eventType)
                     .success(success)
                     .details(details)
-                    .ipAddress(extractIpAddress(request))
-                    .userAgent(request.getHeader("User-Agent"))
+                    .ipAddress(ipAddress)
+                    .userAgent(userAgent)
                     .timestamp(Instant.now())
                     .build();
 
@@ -49,25 +50,38 @@ public class AuditService {
         }
     }
 
-    @Async
+    public void logEvent(
+            Long userId,
+            String username,
+            AuditEventType eventType,
+            boolean success,
+            String details,
+            HttpServletRequest request
+    ) {
+        if (request == null) {
+            logEventAsync(userId, username, eventType, success, details, "unknown", "unknown");
+            return;
+        }
+        String ipAddress = extractIpAddress(request);
+        String userAgent = request.getHeader("User-Agent");
+        logEventAsync(userId, username, eventType, success, details, ipAddress, userAgent);
+    }
+
     public void logLoginSuccess(Long userId, String username, HttpServletRequest request) {
         logEvent(userId, username, AuditEventType.LOGIN_SUCCESS, true, 
                 "User logged in successfully", request);
     }
 
-    @Async
     public void logLoginFailure(String identifier, String reason, HttpServletRequest request) {
         logEvent(null, identifier, AuditEventType.LOGIN_FAILURE, false, 
                 "Login failed: " + reason, request);
     }
 
-    @Async
     public void logTokenRefresh(Long userId, String username, HttpServletRequest request) {
         logEvent(userId, username, AuditEventType.TOKEN_REFRESH, true, 
                 "Token refreshed", request);
     }
 
-    @Async
     public void logLogout(Long userId, String username, HttpServletRequest request) {
         logEvent(userId, username, AuditEventType.LOGOUT, true, 
                 "User logged out", request);

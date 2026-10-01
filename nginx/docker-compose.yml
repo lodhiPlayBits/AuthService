@@ -12,6 +12,9 @@ services:
       - certbot-webroot:/var/www/certbot
     networks:
       - authnet
+    # Map host.docker.internal to host gateway IP for Linux compatibility
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
     mem_limit: 256m
     cpus: 0.5

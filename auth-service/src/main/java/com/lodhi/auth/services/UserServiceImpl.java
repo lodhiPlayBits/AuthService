@@ -39,6 +39,7 @@ public class UserServiceImpl implements UserService {
     private final PasswordEncoder passwordEncoder;
     private final BCryptService bcryptService;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final AccountEventProducer accountEventProducer;
 
     @Override
     public CreateUserResponseDTO createUser(CreateUserRequestDTO createUserRequestDTO) {
@@ -131,9 +132,24 @@ public class UserServiceImpl implements UserService {
             user.setImage(updateUserRequestDTO.getImage());
         }
         
-        // Security-sensitive fields (password, email, phoneNumber) 
-        // are NOT touched by this method
-        
+        if (updateUserRequestDTO.getUsername() != null && !updateUserRequestDTO.getUsername().equals(user.getUsername())) {
+            if (userRepository.existsByUsername(updateUserRequestDTO.getUsername())) {
+                throw new ValidationException("Username is already taken");
+            }
+            user.setUsername(updateUserRequestDTO.getUsername());
+        }
+        if (updateUserRequestDTO.getEmail() != null && !updateUserRequestDTO.getEmail().equals(user.getEmail())) {
+            if (userRepository.existsByEmail(updateUserRequestDTO.getEmail())) {
+                throw new ValidationException("Email is already registered");
+            }
+            user.setEmail(updateUserRequestDTO.getEmail());
+        }
+        if (updateUserRequestDTO.getPhoneNumber() != null && !updateUserRequestDTO.getPhoneNumber().equals(user.getPhoneNumber())) {
+            if (userRepository.existsByPhoneNumber(updateUserRequestDTO.getPhoneNumber())) {
+                throw new ValidationException("Phone number is already in use");
+            }
+            user.setPhoneNumber(updateUserRequestDTO.getPhoneNumber());
+        }
         User updatedUser = userRepository.save(user);
 
         return modelMapper.map(updatedUser, CreateUserResponseDTO.class);
@@ -246,6 +262,16 @@ public class UserServiceImpl implements UserService {
         // If account is disabled, revoke all existing sessions immediately
         if (!enabled) {
             refreshTokenRepository.revokeAllForUser(userId);
+            
+            // Publish account disabled event to Kafka -> SSE clients
+            accountEventProducer.publishAccountDisabled(
+                userId,
+                user.getEmail(),
+                "Your account has been disabled by an administrator. Please contact support."
+            );
+        } else {
+            // Publish account enabled event
+            accountEventProducer.publishAccountEnabled(userId, user.getEmail());
         }
     }
 }

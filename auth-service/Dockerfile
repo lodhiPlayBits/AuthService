@@ -1,37 +1,7 @@
-# =====================================================
-# Multi-stage Dockerfile for Auth Service
-# Optimized for production with small image size
-# =====================================================
-
-# =====================================================
-# Stage 1: Build stage
-# =====================================================
-FROM maven:3.9.9-eclipse-temurin-21-alpine AS builder
-
-# Set working directory
-WORKDIR /app
-
-# Copy Maven files for dependency caching
-COPY pom.xml .
-COPY .mvn .mvn
-COPY mvnw .
-
-# Download dependencies (this layer will be cached)
-RUN ./mvnw dependency:go-offline -B
-
-# Copy source code
-COPY src ./src
-
-# Build the application (skip tests for faster build)
-RUN ./mvnw clean package -DskipTests
-
-# =====================================================
-# Stage 2: Runtime stage
-# =====================================================
 FROM eclipse-temurin:21-jdk-alpine
 
-# Install curl for healthcheck
-RUN apk add --no-cache curl
+# Install curl for healthcheck and gcompat/libc6-compat for snappy-java JNI
+RUN apk add --no-cache curl libc6-compat gcompat snappy
 
 # Create non-root user for security
 RUN addgroup -S spring && adduser -S spring -G spring
@@ -39,8 +9,8 @@ RUN addgroup -S spring && adduser -S spring -G spring
 # Set working directory
 WORKDIR /app
 
-# Copy JAR from builder stage
-COPY --from=builder /app/target/*.jar app.jar
+# Copy JAR from host (built via maven on the host)
+COPY target/*.jar app.jar
 
 # Create logs directory
 RUN mkdir -p /var/log/auth-service && \
@@ -49,12 +19,12 @@ RUN mkdir -p /var/log/auth-service && \
 # Switch to non-root user
 USER spring:spring
 
-# Expose port
-EXPOSE 8080
+# Expose port (changed to 5001 from 8080)
+EXPOSE 5001
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
-  CMD curl -f http://localhost:8080/actuator/health || exit 1
+  CMD curl -f http://localhost:5001/actuator/health || exit 1
 
 # JVM options for container
 ENV JAVA_OPTS="-XX:+UseContainerSupport \

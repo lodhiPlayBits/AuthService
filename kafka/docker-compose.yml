@@ -1,0 +1,100 @@
+version: '3.8'
+
+services:
+  # ==================== KAFKA NODE 1 (KRaft Mode - Controller + Broker) ====================
+  kafka-node-1:
+    build: .
+    container_name: authvolt-kafka-node-1
+    hostname: kafka-node-1
+    ports:
+      - "${KAFKA_NODE_1_EXTERNAL_PORT:-9092}:9092"
+      - "${KAFKA_NODE_1_CONTROLLER_PORT:-9093}:9093"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:19092,EXTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka-node-1:19092,EXTERNAL://${KAFKA_EXTERNAL_HOST:-localhost}:9092'
+    volumes:
+      - ./data/kafka-node-1:/var/lib/kafka/data
+      - ./logs/kafka-node-1:/var/log/kafka
+    networks:
+      - kafka-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:19092"]
+      interval: 15s
+      timeout: 30s
+      retries: 5
+      start_period: 40s
+
+  # ==================== KAFKA NODE 2 (KRaft Mode - Controller + Broker) ====================
+  kafka-node-2:
+    build: .
+    container_name: authvolt-kafka-node-2
+    hostname: kafka-node-2
+    ports:
+      - "${KAFKA_NODE_2_EXTERNAL_PORT:-9094}:9094"
+      - "${KAFKA_NODE_2_CONTROLLER_PORT:-9095}:9093"
+    environment:
+      KAFKA_NODE_ID: 2
+      KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:19092,EXTERNAL://0.0.0.0:9094,CONTROLLER://0.0.0.0:9093'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka-node-2:19092,EXTERNAL://${KAFKA_EXTERNAL_HOST:-localhost}:9094'
+    volumes:
+      - ./data/kafka-node-2:/var/lib/kafka/data
+      - ./logs/kafka-node-2:/var/log/kafka
+    networks:
+      - kafka-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:19092"]
+      interval: 15s
+      timeout: 30s
+      retries: 5
+      start_period: 40s
+
+  # ==================== KAFKA UI ====================
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: authvolt-kafka-ui
+    depends_on:
+      kafka-node-1:
+        condition: service_healthy
+      kafka-node-2:
+        condition: service_healthy
+    ports:
+      - "${KAFKA_UI_PORT:-8080}:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: authvolt-kraft-cluster
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka-node-1:19092,kafka-node-2:19092
+      DYNAMIC_CONFIG_ENABLED: 'true'
+      AUTH_TYPE: 'DISABLED'
+    networks:
+      - kafka-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ==================== KAFKA EXPORTER (Prometheus Metrics) ====================
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    container_name: authvolt-kafka-exporter
+    depends_on:
+      kafka-node-1:
+        condition: service_healthy
+      kafka-node-2:
+        condition: service_healthy
+    ports:
+      - "${KAFKA_EXPORTER_PORT:-9308}:9308"
+    command:
+      - '--kafka.server=kafka-node-1:19092'
+      - '--kafka.server=kafka-node-2:19092'
+    networks:
+      - kafka-network
+    restart: unless-stopped
+
+networks:
+  kafka-network:
+    name: authvolt-kafka-network
+    driver: bridge

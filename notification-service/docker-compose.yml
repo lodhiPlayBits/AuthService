@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  notification-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: notification-service
+    ports:
+      - "5002:5002"
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-node-1:19092,kafka-node-2:19092
+    networks:
+      - kafka-network
+      - authnet
+    restart: unless-stopped
+
+networks:
+  kafka-network:
+    name: authvolt-kafka-network
+    external: true
+  authnet:
+    external: true
