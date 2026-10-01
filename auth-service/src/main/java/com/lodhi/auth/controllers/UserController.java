@@ -38,7 +38,7 @@ public class UserController {
     @GetMapping("/getByEmail")
     @PreAuthorize("hasAuthority('admin:read') or hasAuthority('user:read')")
     public ResponseEntity<CreateUserResponseDTO> getUserByEmail(@RequestBody EmailUserRequestDTO emailUserRequestDTO){
-        return ResponseEntity.status(HttpStatus.FOUND).body(userService.getUserByEmail(emailUserRequestDTO.getEmail()));
+        return ResponseEntity.status(HttpStatus.OK).body(userService.getUserByEmail(emailUserRequestDTO.getEmail()));
     }
 
     @PutMapping("/{id}")
@@ -50,7 +50,7 @@ public class UserController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('admin:read') or (hasAuthority('user:read') and #id == authentication.principal.userId)")
     public ResponseEntity<CreateUserResponseDTO> getUserById(@PathVariable Long id){
-        return ResponseEntity.status(HttpStatus.FOUND).body(userService.getUserById(id));
+        return ResponseEntity.status(HttpStatus.OK).body(userService.getUserById(id));
     }
 
     @DeleteMapping("/{id}")

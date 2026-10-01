@@ -12,6 +12,9 @@
 .env
 .env.*
 
+### Custom Scripts with Sensitive Data ###
+commands/
+
 loadtest/
 build.log
 
@@ -27,3 +30,7 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Ignore sensitive log and script files
+auth-service/logs.txt
+auth-service/test-sse-kafka.sh

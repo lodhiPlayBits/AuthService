@@ -96,17 +96,19 @@ services:
 
       # BCrypt Configuration
       BCRYPT_MAX_CONCURRENT: ${BCRYPT_MAX_CONCURRENT:-3}
+
+      # Kafka Configuration
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka-node-1:19092,kafka-node-2:19092}
     # Direct port access — uncomment for local dev without nginx
     # ports:
-    #   - "8080:8080"
+    #   - "5001:5001"
     expose:
-      - "8080"
+      - "5001"
     volumes:
       - ./logs:/var/log/auth-service
     networks:
       - authnet
-    # Resource limits for t3.large (2 vCPUs, 8GB RAM)
-    # Allocate 100% CPU to auth-service (nginx+redis use ~3%, plenty of headroom)
+      - kafka-network
     deploy:
       resources:
         limits:
@@ -116,7 +118,7 @@ services:
           cpus: '1.0'      # Minimum 1 vCPU
           memory: 2G       # Minimum 2GB
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:5001/actuator/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -124,5 +126,8 @@ services:
 
 networks:
   authnet:
+    external: true
+  kafka-network:
+    name: authvolt-kafka-network
     external: true
 

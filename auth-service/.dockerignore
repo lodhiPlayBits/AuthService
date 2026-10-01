@@ -9,8 +9,9 @@
 .env.*.local
 
 # Maven
-target/
+# target/  # Commented out - we need target/*.jar for Docker build
 .mvn/wrapper/maven-wrapper.jar
+!target/*.jar  # Allow JAR files in target directory
 
 # IDE
 .idea/
