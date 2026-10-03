@@ -56,6 +56,14 @@
             <artifactId>spring-boot-starter-kafka</artifactId>
         </dependency>
 
+
+        <!-- ==================== WEBSOCKET / STOMP ==================== -->
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+
         <!-- Explicitly adding jackson-databind to fix NoClassDefFoundError -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>

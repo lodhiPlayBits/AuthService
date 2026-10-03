@@ -7,7 +7,6 @@ import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -21,7 +20,6 @@ import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -42,9 +40,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtService jwtService;
     private final com.lodhi.auth.services.TokenBlacklistService tokenBlacklistService;
 
-    @Value("${security.jwt.refresh-cookie-name}")
-    private String refreshCookieName;
-
     @Override
     protected void doFilterInternal(
             HttpServletRequest request,
@@ -60,23 +55,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             token = header.substring(7);
         }
 
-        // If no header token, try to get from cookie (for SSE endpoint)
-        if (token == null) {
-            String cookieHeader = request.getHeader("Cookie");
-            if (cookieHeader != null) {
-                String[] cookies = cookieHeader.split(";");
-                for (String c : cookies) {
-                    c = c.trim();
-                    if (c.startsWith(refreshCookieName + "=")) {
-                        token = c.substring(refreshCookieName.length() + 1);
-                        log.debug("Using JWT from cookie for authentication (manually parsed)");
-                        break;
-                    }
-                }
-            }
-        }
-
-        // If still no token found, continue without authentication
+        // If no token found, continue without authentication
         if (token == null) {
             filterChain.doFilter(request, response);
             return;
@@ -86,14 +65,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             Jws<Claims> parsed = jwtService.parseToken(token);
             Claims claims = parsed.getPayload();
 
-            // For SSE endpoint, accept both access and refresh tokens
-            // For other endpoints, only accept access tokens
-            boolean isSseEndpoint = request.getRequestURI().equals("/api/v1/notifications/stream");
-            boolean isAccessToken = jwtService.isAccessToken(claims);
-            boolean isRefreshToken = !isAccessToken; // Assume it's refresh if not access
-
-            if (!isSseEndpoint && !isAccessToken) {
-                log.debug("Token is not an access token for non-SSE endpoint");
+            // Only access tokens authenticate requests — refresh tokens are
+            // refused everywhere
+            if (!jwtService.isAccessToken(claims)) {
+                log.debug("Token is not an access token");
                 filterChain.doFilter(request, response);
                 return;
             }

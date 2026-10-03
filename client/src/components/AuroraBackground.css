@@ -1,0 +1,80 @@
+.aurora-wrapper {
+  position: relative;
+  min-height: 100vh;
+  width: 100%;
+  background: var(--bg-base);
+  overflow: hidden;
+}
+
+.aurora-bg {
+  position: fixed; /* Keep it fixed so it doesn't scroll with content */
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.aurora-gradient {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  opacity: 0.4;
+  animation: aurora-float 20s infinite alternate ease-in-out;
+}
+
+.aurora-1 {
+  top: -10%;
+  left: -10%;
+  width: 60vw;
+  height: 60vw;
+  background: radial-gradient(circle, var(--accent-primary) 0%, transparent 70%);
+  animation-delay: 0s;
+}
+
+.aurora-2 {
+  bottom: -20%;
+  right: -10%;
+  width: 70vw;
+  height: 70vw;
+  background: radial-gradient(circle, var(--accent-secondary) 0%, transparent 70%);
+  animation-delay: -5s;
+}
+
+.aurora-3 {
+  top: 40%;
+  left: 50%;
+  width: 50vw;
+  height: 50vw;
+  background: radial-gradient(circle, var(--accent-tertiary) 0%, transparent 60%);
+  transform: translateX(-50%);
+  animation-delay: -10s;
+}
+
+.aurora-particles {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+  background-size: 32px 32px;
+  opacity: 0.3;
+}
+
+@keyframes aurora-float {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(5%, 5%) scale(1.05);
+  }
+  66% {
+    transform: translate(-5%, 2%) scale(0.95);
+  }
+  100% {
+    transform: translate(2%, -5%) scale(1);
+  }
+}

@@ -22,6 +22,12 @@ spring:
   flyway:
     enabled: false # disable flyway for h2 to avoid postgresql specific syntax issues
 
+  # Pin a literal broker address: the base config uses ${KAFKA_BOOTSTRAP_SERVERS:localhost:19092}
+  # and an empty env var would make @KafkaListener registry startup fail with
+  # "No resolvable bootstrap urls given in bootstrap.servers".
+  kafka:
+    bootstrap-servers: localhost:19092
+
 management:
   health:
     redis:

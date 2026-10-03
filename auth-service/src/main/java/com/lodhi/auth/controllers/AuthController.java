@@ -122,9 +122,4 @@ public class AuthController {
         return ResponseEntity.noContent().build();
     }
 
-    @org.springframework.web.bind.annotation.GetMapping("/debug-tokens")
-    public ResponseEntity<java.util.List<String>> debugTokens() {
-        return ok(refreshTokenService.debugGetAllTokens());
-    }
-
 }

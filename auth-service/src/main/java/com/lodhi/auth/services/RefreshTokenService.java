@@ -53,10 +53,8 @@ public class RefreshTokenService {
         // Hash the JTI for secure lookup
         String jtiHash = tokenHashService.hashJti(jti);
 
-        org.slf4j.LoggerFactory.getLogger(RefreshTokenService.class).info("SEARCHING REFRESH TOKEN: JTI={}, Hash={}", jti, jtiHash);
-
         RefreshToken storedRefreshToken = refreshTokenRepository.findByJtiHash(jtiHash)
-                .orElseThrow(() -> new BadCredentialsException("Invalid refresh token - not found in DB. JTI=" + jti + ", Hash=" + jtiHash));
+                .orElseThrow(() -> new BadCredentialsException("Invalid refresh token - not found in DB"));
 
         if (!storedRefreshToken.getUser().getId().equals(userId)) {
             throw new BadCredentialsException("Invalid refresh token - user mismatch");
@@ -154,9 +152,5 @@ public class RefreshTokenService {
         if (deletedCount > 0) {
             log.info("Cleaned up {} expired refresh tokens from the database", deletedCount);
         }
-    }    public java.util.List<String> debugGetAllTokens() {
-        return refreshTokenRepository.findAll().stream()
-                .map(r -> "JTI: " + r.getJtiHash() + " Revoked: " + r.isRevoked() + " User: " + r.getUser().getId())
-                .toList();
     }
 }

@@ -171,7 +171,7 @@ class RefreshTokenServiceTest {
         lenient().when(refreshTokenRepository.findByJtiHash("old-jti-hash")).thenReturn(Optional.of(otherUserToken));
 
         BadCredentialsException ex = assertThrows(BadCredentialsException.class, () -> refreshTokenService.rotate(oldTokenStr, response));
-        assertEquals("Invalid refresh token", ex.getMessage());
+        assertEquals("Invalid refresh token - user mismatch", ex.getMessage());
     }
 
     @Test

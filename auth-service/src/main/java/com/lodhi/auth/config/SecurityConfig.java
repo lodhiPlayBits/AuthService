@@ -58,7 +58,6 @@ public class SecurityConfig {
                         "/api/v1/auth/oauth2/**",
                         "/api/v1/admin/**",
                         "/api/v1/users/**",
-                        "/api/v1/notifications/**",
                         "/actuator/**"
                 )
                 // /api/v1/auth/refresh and /api/v1/auth/logout REQUIRE CSRF - they use cookies
@@ -87,10 +86,6 @@ public class SecurityConfig {
                 .permitAll()
                 .requestMatchers("/actuator/**")
                 .hasRole("ADMIN")
-                .requestMatchers("/api/v1/notifications/stream")
-                .authenticated()
-                .requestMatchers("/api/v1/notifications/stats")
-                .authenticated()
                 .anyRequest()
                 .authenticated()
         );
