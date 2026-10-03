@@ -1,6 +1,6 @@
 package com.lodhi.auth.config;
 
-import com.lodhi.auth.events.AccountEvent;
+import com.lodhi.notification.contract.events.AccountEvent;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.beans.factory.annotation.Value;
@@ -29,7 +29,8 @@ public class KafkaProducerConfig {
         config.put(JsonSerializer.ADD_TYPE_INFO_HEADERS, false);
         
         // Performance and reliability settings
-        config.put(ProducerConfig.ACKS_CONFIG, "1");
+        config.put(ProducerConfig.ACKS_CONFIG, "all");
+        config.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
         config.put(ProducerConfig.RETRIES_CONFIG, 3);
         config.put(ProducerConfig.LINGER_MS_CONFIG, 10);
         config.put(ProducerConfig.BATCH_SIZE_CONFIG, 16384);
@@ -41,5 +42,26 @@ public class KafkaProducerConfig {
     @Bean
     public KafkaTemplate<String, AccountEvent> accountEventKafkaTemplate() {
         return new KafkaTemplate<>(accountEventProducerFactory());
+    }
+
+    @Bean
+    public ProducerFactory<String, Object> genericProducerFactory() {
+        Map<String, Object> config = new HashMap<>();
+        config.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
+        config.put(JsonSerializer.ADD_TYPE_INFO_HEADERS, false);
+        
+        // Performance and reliability settings
+        config.put(ProducerConfig.ACKS_CONFIG, "all");
+        config.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
+        config.put(ProducerConfig.RETRIES_CONFIG, 3);
+        
+        return new DefaultKafkaProducerFactory<>(config);
+    }
+
+    @Bean
+    public KafkaTemplate<String, Object> genericKafkaTemplate() {
+        return new KafkaTemplate<>(genericProducerFactory());
     }
 }

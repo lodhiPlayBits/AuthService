@@ -1,21 +1,23 @@
-package com.lodhi.notification_service.service;
+package com.lodhi.notification.contract.events;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.io.Serializable;
 import java.time.Instant;
 
 /**
- * Base event for account-related notifications
+ * Single wire schema for account events on the {@code account-events} topic.
+ * Produced by auth-service, consumed by auth-service SSE and notification-service.
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class AccountEvent {
-    
+public class AccountEvent implements Serializable {
+
     private String eventId;
     private AccountEventType type;
     private Long userId;
@@ -23,7 +25,7 @@ public class AccountEvent {
     private String message;
     private Object payload;
     private Instant timestamp;
-    
+
     public enum AccountEventType {
         ACCOUNT_DISABLED,
         ACCOUNT_ENABLED,

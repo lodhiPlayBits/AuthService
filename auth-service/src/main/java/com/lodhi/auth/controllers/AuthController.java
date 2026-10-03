@@ -91,10 +91,14 @@ public class AuthController {
             HttpServletRequest request,
             HttpServletResponse response
     ) {
-        String refreshToken = authUtils.readRefreshTokenFromCookie(request)
-                .orElseThrow(() -> new BadCredentialsException("Refresh token missing from cookie"));
-
-        authService.logout(refreshToken, request, response);
+        java.util.Optional<String> refreshTokenOpt = authUtils.readRefreshTokenFromCookie(request);
+        if (refreshTokenOpt.isPresent()) {
+            try {
+                authService.logout(refreshTokenOpt.get(), request, response);
+            } catch (BadCredentialsException e) {
+                // Ignore: user is already logged out or token is invalid
+            }
+        }
         
         return ResponseEntity.noContent().build();
     }
@@ -120,11 +124,6 @@ public class AuthController {
         authService.logoutAllDevices(userId, request, response);
         
         return ResponseEntity.noContent().build();
-    }
-
-    @org.springframework.web.bind.annotation.GetMapping("/debug-tokens")
-    public ResponseEntity<java.util.List<String>> debugTokens() {
-        return ok(refreshTokenService.debugGetAllTokens());
     }
 
 }

@@ -2,8 +2,17 @@ server:
   port: 5002
 
 spring:
+  # Docker: .env is injected by Compose as container env vars;
+  #         spring.config.import is harmlessly skipped (optional:)
+  config:
+    import: optional:file:.env[.properties]
   application:
     name: notification-service
+  data:
+    redis:
+      host: ${REDIS_HOST:redis-service}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:19092}
     consumer:
@@ -12,5 +21,42 @@ spring:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
-        spring.json.trusted.packages: "*"
-        spring.json.value.default.type: com.lodhi.notification_service.service.AccountEvent
+        # account-events carries one contract schema; pin it and ignore type headers
+        spring.json.trusted.packages: com.lodhi.notification.contract.events
+        spring.json.value.default.type: com.lodhi.notification.contract.events.AccountEvent
+        spring.json.use.type.headers: false
+
+# =====================================================
+# Kafka Topic Configuration
+# =====================================================
+kafka:
+  topics:
+    # Replication factor for KafkaAdmin-managed topics (broadcast-announcements
+    # and its .DLT). Must not exceed the broker count — 2 for the local KRaft
+    # cluster. Topic creation fails with INVALID_REPLICATION_FACTOR otherwise.
+    replication-factor: ${KAFKA_TOPIC_REPLICATION_FACTOR:2}
+
+# =====================================================
+# WebSocket Configuration
+# =====================================================
+websocket:
+  # Explicit origin allow-list for WebSocket handshakes. Never "*" — that
+  # would allow cross-site WebSocket hijacking. Keep in sync with the CORS
+  # origins above.
+  allowed-origins: ${WEBSOCKET_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000,https://authvolt.fun,http://authvolt.fun}
+
+# =====================================================
+# JWT Configuration — must match auth-service signing values
+# =====================================================
+security:
+  jwt:
+    secret: ${JWT_SECRET}
+    issuer: ${JWT_ISSUER}
+    audience: ${JWT_AUDIENCE}
+
+# =====================================================
+# CORS Configuration
+# =====================================================
+app:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:https://authvolt.fun,http://localhost:5173}

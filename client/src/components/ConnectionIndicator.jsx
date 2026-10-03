@@ -1,50 +1,31 @@
 import './ConnectionIndicator.css';
+import { Wifi, WifiOff, Loader, AlertCircle } from 'lucide-react';
 
-/**
- * Visual indicator for SSE connection status
- */
-const ConnectionIndicator = ({ connectionState }) => {
+export default function ConnectionIndicator({ connectionState }) {
   const getStatusConfig = () => {
     switch (connectionState) {
       case 'connected':
-        return {
-          label: 'Live',
-          color: '#28a745',
-          pulse: true
-        };
+        return { label: 'Connected', className: 'status-connected', icon: <Wifi size={14} /> };
       case 'connecting':
-        return {
-          label: 'Connecting...',
-          color: '#ffc107',
-          pulse: true
-        };
+        return { label: 'Connecting', className: 'status-connecting', icon: <Loader size={14} className="spin" /> };
       case 'error':
-        return {
-          label: 'Error',
-          color: '#dc3545',
-          pulse: false
-        };
+        return { label: 'Error', className: 'status-error', icon: <AlertCircle size={14} /> };
       case 'disconnected':
       default:
-        return {
-          label: 'Offline',
-          color: '#6c757d',
-          pulse: false
-        };
+        return { label: 'Offline', className: 'status-offline', icon: <WifiOff size={14} /> };
     }
   };
 
   const config = getStatusConfig();
 
   return (
-    <div className="connection-indicator">
-      <div 
-        className={`status-dot ${config.pulse ? 'pulse' : ''}`}
-        style={{ backgroundColor: config.color }}
-      />
-      <span className="status-label">{config.label}</span>
+    <div className={`connection-indicator ${config.className}`}>
+      <div className="status-ring-container">
+        <div className="status-ring-1"></div>
+        <div className="status-ring-2"></div>
+        <div className="status-dot"></div>
+      </div>
+      <span className="status-label">{config.icon} {config.label}</span>
     </div>
   );
-};
-
-export default ConnectionIndicator;
+}

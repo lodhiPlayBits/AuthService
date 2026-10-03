@@ -1,76 +1,100 @@
 import { useEffect, useState } from 'react';
 import './NotificationBanner.css';
+import { ShieldAlert, Info, Bell, ShieldCheck, X } from 'lucide-react';
 
-/**
- * Notification banner component to display real-time notifications
- */
-const NotificationBanner = ({ notification, onClose }) => {
+const PERSISTENT_EVENTS = ['ACCOUNT_DISABLED', 'SESSION_REVOKED', 'ANNOUNCEMENT'];
+const DURATION_MS = 5000;
+
+export default function NotificationBanner({ notification, onClose, onAcknowledge, onDismiss }) {
   const [isVisible, setIsVisible] = useState(false);
+  const [progress, setProgress] = useState(100);
 
   useEffect(() => {
-    if (notification) {
-      setIsVisible(true);
-      
-      // Auto-dismiss after 5 seconds (except for critical events)
-      const criticalEvents = ['ACCOUNT_DISABLED', 'SESSION_REVOKED'];
-      if (!criticalEvents.includes(notification.type)) {
-        const timer = setTimeout(() => {
-          handleClose();
-        }, 5000);
-        
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [notification]);
+    const frame = requestAnimationFrame(() => setIsVisible(true));
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
-  const handleClose = () => {
+  const close = () => {
     setIsVisible(false);
-    setTimeout(() => {
-      onClose?.();
-    }, 300); // Wait for animation to complete
+    setTimeout(() => onClose?.(), 300);
   };
+
+  useEffect(() => {
+    if (!notification || PERSISTENT_EVENTS.includes(notification.type)) return;
+    
+    const startTime = Date.now();
+    let animFrame;
+
+    const tick = () => {
+      const elapsed = Date.now() - startTime;
+      const remaining = Math.max(0, 100 - (elapsed / DURATION_MS) * 100);
+      setProgress(remaining);
+      
+      if (remaining > 0) {
+        animFrame = requestAnimationFrame(tick);
+      } else {
+        close();
+      }
+    };
+    
+    animFrame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(animFrame);
+  }, [notification, onClose]);
 
   if (!notification) return null;
 
-  const getNotificationClass = () => {
+  const getConfig = () => {
     switch (notification.type) {
       case 'ACCOUNT_DISABLED':
       case 'SESSION_REVOKED':
-        return 'notification-error';
+        return { class: 'toast-error', icon: <ShieldAlert size={20} /> };
       case 'ACCOUNT_ENABLED':
-        return 'notification-success';
+        return { class: 'toast-success', icon: <ShieldCheck size={20} /> };
+      case 'ANNOUNCEMENT':
+        return { class: 'toast-accent', icon: <Bell size={20} /> };
       default:
-        return 'notification-info';
+        return { class: 'toast-info', icon: <Info size={20} /> };
     }
   };
 
-  const getIcon = () => {
-    switch (notification.type) {
-      case 'ACCOUNT_DISABLED':
-        return '🚫';
-      case 'ACCOUNT_ENABLED':
-        return '✅';
-      case 'SESSION_REVOKED':
-        return '⚠️';
-      default:
-        return 'ℹ️';
-    }
-  };
+  const config = getConfig();
+  const heading = notification.type === 'ANNOUNCEMENT'
+    ? (notification.title || 'Announcement')
+    : (notification.type ? notification.type.replace(/_/g, ' ') : 'Notification');
 
   return (
-    <div className={`notification-banner ${getNotificationClass()} ${isVisible ? 'show' : ''}`}>
-      <div className="notification-content">
-        <span className="notification-icon">{getIcon()}</span>
-        <div className="notification-text">
-          <strong>{notification.type.replace(/_/g, ' ')}</strong>
-          <p>{notification.message}</p>
+    <div className={`toast-container ${isVisible ? 'show' : ''}`}>
+      <div className={`toast-card ${config.class}`}>
+        <div className="toast-icon-wrapper">
+          {config.icon}
         </div>
-        <button className="notification-close" onClick={handleClose}>
-          ×
+        
+        <div className="toast-content">
+          <h4 className="toast-title">{heading}</h4>
+          <p className="toast-message">{notification.message}</p>
+          
+          {notification.type === 'ANNOUNCEMENT' && (
+            <div className="toast-actions">
+              <button className="btn btn-primary btn-sm" onClick={() => { onAcknowledge?.(notification.announcementId); close(); }}>
+                Acknowledge
+              </button>
+              <button className="btn btn-sm" onClick={() => { onDismiss?.(notification.announcementId); close(); }}>
+                Dismiss
+              </button>
+            </div>
+          )}
+        </div>
+        
+        <button className="toast-close" onClick={close}>
+          <X size={16} />
         </button>
+
+        {!PERSISTENT_EVENTS.includes(notification.type) && (
+          <div className="toast-progress-track">
+            <div className="toast-progress-bar" style={{ width: `${progress}%` }} />
+          </div>
+        )}
       </div>
     </div>
   );
-};
-
-export default NotificationBanner;
+}

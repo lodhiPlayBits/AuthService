@@ -1,33 +1,111 @@
 .connection-indicator {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 12px;
-  background: rgba(0, 0, 0, 0.05);
-  font-size: 12px;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 999px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  font-size: 0.75rem;
   font-weight: 500;
-}
-
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-
-.status-dot.pulse {
-  animation: pulse 2s infinite;
+  transition: all 0.3s ease;
 }
 
 .status-label {
-  color: #333;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
 }
 
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
+.spin {
+  animation: spin 2s linear infinite;
+}
+
+@keyframes spin {
+  100% { transform: rotate(360deg); }
+}
+
+.status-ring-container {
+  position: relative;
+  width: 8px;
+  height: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  position: absolute;
+  z-index: 2;
+}
+
+.status-ring-1, .status-ring-2 {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid;
+  opacity: 0;
+  z-index: 1;
+}
+
+/* Connected State */
+.status-connected {
+  color: var(--success);
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.2);
+}
+.status-connected .status-dot { background: var(--success); box-shadow: 0 0 8px var(--success); }
+.status-connected .status-ring-1, .status-connected .status-ring-2 {
+  border-color: var(--success);
+  animation: ring-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+.status-connected .status-ring-2 { animation-delay: 1s; }
+
+/* Connecting State */
+.status-connecting {
+  color: var(--accent-tertiary);
+  background: rgba(34, 211, 238, 0.1);
+  border-color: rgba(34, 211, 238, 0.2);
+}
+.status-connecting .status-dot { background: var(--accent-tertiary); }
+.status-connecting .status-ring-1 {
+  border: 2px dashed var(--accent-tertiary);
+  width: 14px;
+  height: 14px;
+  opacity: 0.8;
+  animation: spin 4s linear infinite;
+}
+
+/* Error State */
+.status-error {
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.2);
+}
+.status-error .status-dot { background: var(--danger); }
+.status-error .status-ring-1 {
+  border-color: var(--danger);
+  width: 12px; height: 12px;
+  opacity: 0.5;
+  animation: subtle-shake 2s ease-in-out infinite;
+}
+
+/* Offline State */
+.status-offline {
+  color: var(--text-secondary);
+}
+.status-offline .status-dot { background: var(--text-secondary); }
+
+@keyframes ring-pulse {
+  0% { width: 6px; height: 6px; opacity: 0.8; }
+  100% { width: 24px; height: 24px; opacity: 0; }
+}
+
+@keyframes subtle-shake {
+  0%, 100% { transform: translateX(0); }
+  5%, 15% { transform: translateX(-1px); }
+  10%, 20% { transform: translateX(1px); }
+  25% { transform: translateX(0); }
 }

@@ -2,6 +2,8 @@ package com.lodhi.auth.services;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 import java.util.Optional;
@@ -34,6 +36,8 @@ class UserServiceImplTest {
     @Mock private ModelMapper modelMapper;
     @Mock private RoleServiceImpl roleService;
     @Mock private PasswordEncoder passwordEncoder;
+    @Mock private BCryptService bcryptService;
+    @Mock private AccountEventProducer accountEventProducer;
     @Mock private com.lodhi.auth.respositories.RefreshTokenRepository refreshTokenRepository;
 
     @InjectMocks
@@ -276,8 +280,8 @@ class UserServiceImplTest {
         req.setConfirmPassword("new_password");
 
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));
-        when(passwordEncoder.matches("encoded_password", user.getPassword())).thenReturn(true);
-        when(passwordEncoder.matches("new_password", user.getPassword())).thenReturn(false);
+        when(bcryptService.matches("encoded_password", user.getPassword())).thenReturn(true);
+        when(bcryptService.matches("new_password", user.getPassword())).thenReturn(false);
         when(passwordEncoder.encode("new_password")).thenReturn("new_encoded");
 
         userService.changePassword(1L, req);
@@ -307,7 +311,7 @@ class UserServiceImplTest {
         req.setConfirmPassword("new_password");
 
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));
-        when(passwordEncoder.matches("wrong_current", user.getPassword())).thenReturn(false);
+        when(bcryptService.matches("wrong_current", user.getPassword())).thenReturn(false);
 
         assertThrows(ValidationException.class, () -> userService.changePassword(1L, req));
     }
@@ -320,7 +324,7 @@ class UserServiceImplTest {
         req.setConfirmPassword("encoded_password");
 
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));
-        when(passwordEncoder.matches("encoded_password", user.getPassword())).thenReturn(true);
+        when(bcryptService.matches("encoded_password", user.getPassword())).thenReturn(true);
 
         assertThrows(ValidationException.class, () -> userService.changePassword(1L, req));
     }
@@ -376,6 +380,7 @@ class UserServiceImplTest {
         verify(userRepository).save(user);
         assertFalse(user.isEnabled());
         verify(refreshTokenRepository).revokeAllForUser(1L);
+        verify(accountEventProducer).publishAccountDisabled(eq(1L), eq("test@example.com"), anyString());
     }
     
     @Test
@@ -388,5 +393,7 @@ class UserServiceImplTest {
         verify(userRepository).save(user);
         assertTrue(user.isEnabled());
         verify(refreshTokenRepository, never()).revokeAllForUser(1L);
+        verify(accountEventProducer).publishAccountEnabled(1L, "test@example.com");
+        verify(accountEventProducer, never()).publishAccountDisabled(any(), any(), any());
     }
 }

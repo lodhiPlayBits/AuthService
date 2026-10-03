@@ -1,7 +1,7 @@
 package com.lodhi.auth.services;
 
 import com.lodhi.auth.config.KafkaTopicConfig;
-import com.lodhi.auth.events.AccountEvent;
+import com.lodhi.notification.contract.events.AccountEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;

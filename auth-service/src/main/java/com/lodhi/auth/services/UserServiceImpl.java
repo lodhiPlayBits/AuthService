@@ -12,6 +12,8 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.lodhi.auth.constants.SystemRoles;
 import com.lodhi.auth.dtos.ChangePasswordRequestDTO;
@@ -262,16 +264,36 @@ public class UserServiceImpl implements UserService {
         // If account is disabled, revoke all existing sessions immediately
         if (!enabled) {
             refreshTokenRepository.revokeAllForUser(userId);
-            
-            // Publish account disabled event to Kafka -> SSE clients
-            accountEventProducer.publishAccountDisabled(
-                userId,
-                user.getEmail(),
-                "Your account has been disabled by an administrator. Please contact support."
-            );
+        }
+
+        // Defer until commit — a rolled-back status change must not emit
+        // events that force clients to log out for nothing
+        String email = user.getEmail();
+        afterCommit(() -> {
+            if (!enabled) {
+                accountEventProducer.publishAccountDisabled(
+                    userId,
+                    email,
+                    "Your account has been disabled by an administrator. Please contact support."
+                );
+            } else {
+                accountEventProducer.publishAccountEnabled(userId, email);
+            }
+        });
+    }
+
+    private void afterCommit(Runnable action) {
+        // registerSynchronization() throws when no transaction is active;
+        // direct callers (e.g. unit tests) fall back to immediate execution
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    action.run();
+                }
+            });
         } else {
-            // Publish account enabled event
-            accountEventProducer.publishAccountEnabled(userId, user.getEmail());
+            action.run();
         }
     }
 }

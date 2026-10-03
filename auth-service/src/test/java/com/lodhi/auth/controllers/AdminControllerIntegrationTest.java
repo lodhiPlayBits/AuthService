@@ -27,7 +27,7 @@ class AdminControllerIntegrationTest extends BaseIntegrationTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
-    @WithMockUser(roles = "ADMIN")
+    @WithMockUser(authorities = {"ROLE_ADMIN", "roles:read"})
     void testGetRoles_AsAdmin_ReturnsOk() throws Exception {
         mockMvc.perform(get("/api/v1/admin/roles")
                 .contentType(MediaType.APPLICATION_JSON))
@@ -35,7 +35,6 @@ class AdminControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
-    @org.junit.jupiter.api.Disabled("RequiresPermission aspect is not implemented yet")
     @WithMockUser(roles = "USER")
     void testGetRoles_AsUser_ReturnsForbidden() throws Exception {
         mockMvc.perform(get("/api/v1/admin/roles")
@@ -51,7 +50,7 @@ class AdminControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMIN", username = "admin")
+    @WithMockUser(authorities = {"ROLE_ADMIN", "roles:create"}, username = "admin")
     void testCreateRole_ReturnsCreated() throws Exception {
         CreateRoleRequestDTO req = new CreateRoleRequestDTO();
         req.setRoleName("MANAGER_ROLE");
@@ -64,21 +63,21 @@ class AdminControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMIN", username = "admin")
+    @WithMockUser(authorities = {"ROLE_ADMIN", "roles:delete"}, username = "admin")
     void testDeleteRole_ReturnsNoContent() throws Exception {
         mockMvc.perform(delete("/api/v1/admin/roles/" + UUID.randomUUID()))
                 .andExpect(status().isNotFound()); // NotFound because role doesn't exist yet, but route is accessible
     }
 
     @Test
-    @WithMockUser(roles = "ADMIN")
+    @WithMockUser(authorities = {"ROLE_ADMIN", "permissions:read"})
     void testGetPermissions_ReturnsOk() throws Exception {
         mockMvc.perform(get("/api/v1/admin/permissions"))
                 .andExpect(status().isOk());
     }
 
     @Test
-    @WithMockUser(roles = "ADMIN", username = "admin")
+    @WithMockUser(authorities = {"ROLE_ADMIN", "permissions:create"}, username = "admin")
     void testCreatePermission_ReturnsCreated() throws Exception {
         CreatePermissionRequestDTO req = new CreatePermissionRequestDTO();
         req.setName("logs:read");
@@ -91,14 +90,14 @@ class AdminControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMIN", username = "admin")
+    @WithMockUser(authorities = {"ROLE_ADMIN", "permissions:delete"}, username = "admin")
     void testDeletePermission_ReturnsNotFound() throws Exception {
         mockMvc.perform(delete("/api/v1/admin/permissions/" + UUID.randomUUID()))
                 .andExpect(status().isNotFound()); 
     }
 
     @Test
-    @WithMockUser(roles = "ADMIN", username = "admin")
+    @WithMockUser(authorities = {"ROLE_ADMIN", "roles:update"}, username = "admin")
     void testAssignPermissionsToRole_ReturnsOk() throws Exception {
         AssignPermissionsRequestDTO req = new AssignPermissionsRequestDTO();
         req.setPermissionIds(Set.of(UUID.randomUUID()));
@@ -110,7 +109,7 @@ class AdminControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMIN", username = "admin")
+    @WithMockUser(authorities = {"ROLE_ADMIN", "roles:update"}, username = "admin")
     void testRevokePermissionsFromRole_ReturnsOk() throws Exception {
         AssignPermissionsRequestDTO req = new AssignPermissionsRequestDTO();
         req.setPermissionIds(Set.of(UUID.randomUUID()));
@@ -122,14 +121,14 @@ class AdminControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMIN")
+    @WithMockUser(authorities = {"ROLE_ADMIN", "users:read"})
     void testGetUsers_ReturnsOk() throws Exception {
         mockMvc.perform(get("/api/v1/admin/users"))
                 .andExpect(status().isOk());
     }
 
     @Test
-    @WithMockUser(roles = "ADMIN", username = "admin")
+    @WithMockUser(authorities = {"ROLE_ADMIN", "users:assign-roles"}, username = "admin")
     void testAssignRolesToUser_ReturnsOk() throws Exception {
         AssignRolesRequestDTO req = new AssignRolesRequestDTO();
         req.setRoleIds(Set.of(UUID.randomUUID()));

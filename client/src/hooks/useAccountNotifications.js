@@ -1,36 +1,39 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { getReconnectDelay } from '../utils/backoff';
 
 /**
  * Custom hook for subscribing to real-time account notifications via SSE
  * 
  * Features:
  * - Auto-connects when authenticated
- * - Auto-reconnects on connection loss (with exponential backoff)
+ * - Auto-reconnects on connection loss with jittered exponential backoff
+ *   (capped at 30s; retries indefinitely — a recovered server may be
+ *   reachable minutes later, and giving up would leave the user silently
+ *   offline until a page reload)
  * - Handles account disable events -> auto logout
  * - Cleans up on unmount
  */
 export const useAccountNotifications = () => {
-  const { user, token, isAuthenticated, logout } = useAuth();
-  const [connectionState, setConnectionState] = useState('disconnected'); // disconnected, connecting, connected, error
+  const { token, isAuthenticated, logout } = useAuth();
+  const [streamStatus, setStreamStatus] = useState('idle'); // idle | connecting | connected | error
   const [lastEvent, setLastEvent] = useState(null);
   const [notifications, setNotifications] = useState([]);
   
   const eventSourceRef = useRef(null);
+  const lastEventIdRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
   const reconnectAttempts = useRef(0);
-  const maxReconnectAttempts = 10;
-  const baseReconnectDelay = 1000; // 1 second
+  const connectRef = useRef(null);
+  const disconnectRef = useRef(null);
 
-  /**
-   * Calculate exponential backoff delay
-   */
-  const getReconnectDelay = useCallback(() => {
-    return Math.min(
-      baseReconnectDelay * Math.pow(2, reconnectAttempts.current),
-      30000 // Max 30 seconds
-    );
-  }, []);
+  // Derived so session changes never require a setState from an effect:
+  // no session means disconnected, otherwise idle means a connect is underway.
+  const connectionState = !isAuthenticated || !token
+    ? 'disconnected'
+    : streamStatus === 'idle'
+      ? 'connecting'
+      : streamStatus;
 
   /**
    * Add notification to the list (keeping last 10)
@@ -87,29 +90,31 @@ export const useAccountNotifications = () => {
       return;
     }
 
-    setConnectionState('connecting');
     console.log('Connecting to SSE stream...');
 
     const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080';
-    // Append userId since notification-service expects it
-    const url = `${apiUrl}/api/v1/notifications/stream?userId=${user?.id || user?.userId}`;
+    // EventSource cannot set headers, so the JWT is passed as a query parameter;
+    // notification-service only accepts it on this exact stream path.
+    let url = `${apiUrl}/api/v1/notifications/stream?token=${encodeURIComponent(token)}`;
+    // Manual reconnects create a new EventSource, which loses lastEventId;
+    // carry it explicitly so the server can replay events missed while offline.
+    if (lastEventIdRef.current) {
+      url += `&lastEventId=${encodeURIComponent(lastEventIdRef.current)}`;
+    }
 
-    // Use cookie-based authentication with withCredentials
-    const eventSource = new EventSource(url, {
-      withCredentials: true
-    });
+    const eventSource = new EventSource(url);
 
     eventSourceRef.current = eventSource;
 
     // Connected
     eventSource.addEventListener('connected', (e) => {
       console.log('SSE connected:', e.data);
-      setConnectionState('connected');
+      setStreamStatus('connected');
       reconnectAttempts.current = 0;
     });
 
     // Heartbeat/ping
-    eventSource.addEventListener('ping', (e) => {
+    eventSource.addEventListener('ping', () => {
       console.debug('SSE heartbeat received');
     });
 
@@ -155,35 +160,37 @@ export const useAccountNotifications = () => {
     // Connection opened
     eventSource.onopen = () => {
       console.log('SSE connection opened');
-      setConnectionState('connected');
+      setStreamStatus('connected');
       reconnectAttempts.current = 0;
     };
 
     // Error handling
     eventSource.onerror = (error) => {
       console.error('SSE error:', error);
-      setConnectionState('error');
+      setStreamStatus('error');
+
+      // Preserve the last seen event id before dropping this EventSource
+      lastEventIdRef.current = eventSource.lastEventId || lastEventIdRef.current;
       
       // Close the current connection
       eventSource.close();
       eventSourceRef.current = null;
 
-      // Attempt reconnection with exponential backoff
-      if (reconnectAttempts.current < maxReconnectAttempts) {
-        const delay = getReconnectDelay();
-        console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttempts.current + 1}/${maxReconnectAttempts})`);
-        
-        reconnectTimeoutRef.current = setTimeout(() => {
-          reconnectAttempts.current++;
-          connect();
-        }, delay);
-      } else {
-        console.error('Max reconnection attempts reached');
-        setConnectionState('disconnected');
-      }
+      // Jittered exponential backoff, capped at 30s, retried indefinitely.
+      // The counter resets on every successful connection (below), so this
+      // only ever slows down an unhealthy stream.
+      const attempt = reconnectAttempts.current;
+      reconnectAttempts.current = attempt + 1;
+      const delay = getReconnectDelay(attempt);
+      console.log(`SSE reconnecting in ${delay}ms (attempt ${attempt + 1})`);
+
+      reconnectTimeoutRef.current = setTimeout(() => {
+        setStreamStatus('connecting');
+        connectRef.current?.();
+      }, delay);
     };
 
-  }, [user, isAuthenticated, token, getReconnectDelay, handleAccountDisabled, logout, addNotification]);
+  }, [isAuthenticated, token, handleAccountDisabled, addNotification, logout]);
 
   /**
    * Disconnect from SSE stream
@@ -200,8 +207,10 @@ export const useAccountNotifications = () => {
       eventSourceRef.current = null;
     }
 
-    setConnectionState('disconnected');
+    setStreamStatus('idle');
     reconnectAttempts.current = 0;
+    // lastEventIdRef is intentionally kept: reconnects after token rotation
+    // must still replay events missed during the switch. It is reset on logout.
   }, []);
 
   /**
@@ -212,26 +221,35 @@ export const useAccountNotifications = () => {
     setLastEvent(null);
   }, []);
 
-  // Auto-connect when authenticated
+  // Keep the latest callbacks in refs so the auto-connect effect can call them
+  // without re-running on every identity change, and so connect() can
+  // reschedule itself without a self-reference.
   useEffect(() => {
-    if (isAuthenticated) {
-      connect();
+    connectRef.current = connect;
+    disconnectRef.current = disconnect;
+  });
+
+  // Auto-connect when authenticated. The token is an effect dependency so a
+  // rotated (refreshed) access token reconnects the SSE stream.
+  useEffect(() => {
+    if (isAuthenticated && token) {
+      connectRef.current?.();
     } else {
-      disconnect();
+      // The previous effect's cleanup already closed any open stream; a fresh
+      // session must not replay events from the old one.
+      lastEventIdRef.current = null;
     }
 
     // Cleanup on unmount
     return () => {
-      disconnect();
+      disconnectRef.current?.();
     };
-  }, [isAuthenticated]); // Only depend on authentication state
+  }, [isAuthenticated, token]);
 
   return {
     connectionState,
     lastEvent,
     notifications,
-    clearNotifications,
-    connect,
-    disconnect
+    clearNotifications
   };
 };

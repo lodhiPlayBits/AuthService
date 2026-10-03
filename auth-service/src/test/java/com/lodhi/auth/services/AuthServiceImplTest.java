@@ -103,7 +103,7 @@ class AuthServiceImplTest {
 
         assertNotNull(res);
         assertEquals("accessToken", res.getAccessToken());
-        verify(refreshTokenRepository).save(any(RefreshToken.class));
+        verify(refreshTokenRepository).saveAndFlush(any(RefreshToken.class));
         verify(cookieService).attachRefreshCookie(response, "refreshToken", 3600);
         verify(auditService).logLoginSuccess(user.getId(), user.getEmail(), request);
     }

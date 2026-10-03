@@ -96,6 +96,37 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
+    void doFilterInternal_RefreshToken_ShouldNotAuthenticate() throws ServletException, IOException {
+        request.addHeader("Authorization", "Bearer refresh-token");
+        when(jwtService.parseToken("refresh-token")).thenReturn(jws);
+        when(jws.getPayload()).thenReturn(claims);
+        when(jwtService.isAccessToken(claims)).thenReturn(false);
+
+        jwtAuthenticationFilter.doFilterInternal(request, response, filterChain);
+
+        verify(filterChain).doFilter(request, response);
+        assertNull(SecurityContextHolder.getContext().getAuthentication());
+        verifyNoInteractions(tokenBlacklistService);
+    }
+
+    @Test
+    void doFilterInternal_BlacklistedAccessToken_ShouldReturn401() throws ServletException, IOException {
+        request.addHeader("Authorization", "Bearer access-token");
+        when(jwtService.parseToken("access-token")).thenReturn(jws);
+        when(jws.getPayload()).thenReturn(claims);
+        when(jwtService.isAccessToken(claims)).thenReturn(true);
+        when(claims.getExpiration()).thenReturn(new Date(System.currentTimeMillis() + 10_000));
+        when(claims.getId()).thenReturn("jti");
+        when(tokenBlacklistService.isBlacklisted("jti")).thenReturn(true);
+
+        jwtAuthenticationFilter.doFilterInternal(request, response, filterChain);
+
+        assertEquals(401, response.getStatus());
+        verifyNoInteractions(filterChain);
+        assertNull(SecurityContextHolder.getContext().getAuthentication());
+    }
+
+    @Test
     void doFilterInternal_ExpiredToken_ShouldContinue() throws ServletException, IOException {
         request.addHeader("Authorization", "Bearer token");
         when(jwtService.parseToken("token")).thenReturn(jws);

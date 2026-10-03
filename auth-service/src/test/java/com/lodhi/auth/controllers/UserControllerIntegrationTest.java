@@ -112,7 +112,7 @@ class UserControllerIntegrationTest extends BaseIntegrationTest {
     void testGetUserById_Success() throws Exception {
         mockMvc.perform(get("/api/v1/users/" + userId)
                 .header("Authorization", "Bearer " + accessToken))
-                .andExpect(status().isFound()) // Method returns HttpStatus.FOUND (302)
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value("user_test@example.com"));
     }
 

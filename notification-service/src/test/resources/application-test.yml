@@ -1,0 +1,16 @@
+spring:
+  kafka:
+    bootstrap-servers: localhost:19092
+  data:
+    redis:
+      host: localhost
+
+security:
+  jwt:
+    secret: test-secret-key-that-is-at-least-32-bytes-long-for-hmac-sha256
+    issuer: test-issuer
+    audience: test-audience
+
+app:
+  cors:
+    allowed-origins: http://localhost:5173

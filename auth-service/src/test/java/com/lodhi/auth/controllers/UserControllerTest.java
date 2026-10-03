@@ -28,12 +28,12 @@ class UserControllerTest {
     private UserController userController;
 
     @Test
-    void getUserById_ShouldReturnFound() {
+    void getUserById_ShouldReturnOk() {
         CreateUserResponseDTO res = new CreateUserResponseDTO();
         when(userService.getUserById(1L)).thenReturn(res);
         
         ResponseEntity<CreateUserResponseDTO> entity = userController.getUserById(1L);
-        assertEquals(HttpStatus.FOUND, entity.getStatusCode());
+        assertEquals(HttpStatus.OK, entity.getStatusCode());
         assertEquals(res, entity.getBody());
     }
 
