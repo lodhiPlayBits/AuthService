@@ -13,6 +13,7 @@ permissions:
 env:
   AWS_REGION: ap-northeast-1
   ECR_REPOSITORY: auth-service
+  APP_DIR: .   # change to the folder containing pom.xml, e.g. auth-service
 
 jobs:
   build-and-push:
@@ -24,9 +25,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-          cache: maven   # use gradle if that's your build tool
+          cache: maven
+          cache-dependency-path: ${{ env.APP_DIR }}/pom.xml
 
       - name: Build and test
+        working-directory: ${{ env.APP_DIR }}
         run: mvn -B verify
 
       - name: Configure AWS credentials
@@ -51,5 +54,5 @@ jobs:
       - name: Build and push image
         run: |
           IMAGE=${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.tag.outputs.tag }}
-          docker build -t $IMAGE .
+          docker build -t $IMAGE ${{ env.APP_DIR }}
           docker push $IMAGE
