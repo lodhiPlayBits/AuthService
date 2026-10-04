@@ -38,6 +38,7 @@ public class AnnouncementStompController {
     private final AnnouncementProducer announcementProducer;
     private final SimpMessagingTemplate messagingTemplate;
     private final ObjectMapper objectMapper;
+    private final org.springframework.kafka.core.KafkaTemplate<String, Object> announcementKafkaTemplate;
 
     @MessageMapping("/announcement.send")
     public void sendAnnouncement(@Payload AnnouncementRequest request, Principal principal) {
@@ -98,7 +99,7 @@ public class AnnouncementStompController {
         adminMsg.put("userId", stompPrincipal.userId());
         adminMsg.put("responseAction", ack ? "ACK" : "DISMISS");
         adminMsg.put("timestamp", Instant.now().toString());
-        messagingTemplate.convertAndSend(StompDestinations.ADMIN_RESPONSES_TOPIC, (Object) adminMsg);
+        announcementKafkaTemplate.send(com.lodhi.notification_service.config.KafkaAnnouncementConfig.ADMIN_RESPONSES_TOPIC, announcementId, adminMsg);
 
         log.debug("User {} responded with {} to announcement {}",
                 stompPrincipal.userId(), action, announcementId);

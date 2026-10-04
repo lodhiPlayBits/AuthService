@@ -20,6 +20,7 @@ import com.lodhi.auth.security.JwtService;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -36,14 +37,22 @@ public class RefreshTokenService {
     private final ModelMapper mapper;
     private final RefreshTokenFamilyService refreshTokenFamilyService;
     private final com.lodhi.auth.security.TokenHashService tokenHashService;
+    private final com.lodhi.auth.audit.AuditService auditService;
     @Transactional
-    public TokenResponse rotate(String refreshToken, HttpServletResponse response) {
+    public TokenResponse rotate(String refreshToken, HttpServletRequest request, HttpServletResponse response) {
 
-        Jws<Claims> jws = jwtService.parseToken(refreshToken);
+        Jws<Claims> jws;
+        try {
+            jws = jwtService.parseToken(refreshToken);
+        } catch (Exception e) {
+            auditService.logTokenRefreshFailure("unknown", "Invalid token signature/format", request);
+            throw e;
+        }
 
         Claims claims = jws.getPayload();
 
         if (!jwtService.isRefreshToken(claims)) {
+            auditService.logTokenRefreshFailure(claims.getSubject(), "Not a refresh token", request);
             throw new BadCredentialsException("Invalid refresh token - not a refresh token");
         }
 
@@ -54,9 +63,13 @@ public class RefreshTokenService {
         String jtiHash = tokenHashService.hashJti(jti);
 
         RefreshToken storedRefreshToken = refreshTokenRepository.findByJtiHash(jtiHash)
-                .orElseThrow(() -> new BadCredentialsException("Invalid refresh token - not found in DB"));
+                .orElseThrow(() -> {
+                    auditService.logTokenRefreshFailure(userId.toString(), "Not found in DB", request);
+                    return new BadCredentialsException("Invalid refresh token - not found in DB");
+                });
 
         if (!storedRefreshToken.getUser().getId().equals(userId)) {
+            auditService.logTokenRefreshFailure(userId.toString(), "User mismatch", request);
             throw new BadCredentialsException("Invalid refresh token - user mismatch");
         }
 
@@ -64,6 +77,7 @@ public class RefreshTokenService {
         if (storedRefreshToken.getExpiresAt().isBefore(Instant.now())) {
             // Token has expired - revoke family for security
             log.warn("Expired refresh token detected for user: {}", userId);
+            auditService.logTokenRefreshFailure(userId.toString(), "Expired", request);
             refreshTokenFamilyService.revokeFamily(storedRefreshToken.getFamilyId());
             throw new BadCredentialsException("Refresh token has expired");
         }
@@ -81,6 +95,7 @@ public class RefreshTokenService {
             // Assume compromise: kill every token in this family, including
             // whatever the legitimate client is currently holding.
             log.warn("Token reuse detected for user: {}, revoking family: {}", userId, familyId);
+            auditService.logTokenReuse(userId, userId.toString(), request);
             refreshTokenFamilyService.revokeFamily(familyId);
             throw new BadCredentialsException("Refresh token has been revoked");
         }

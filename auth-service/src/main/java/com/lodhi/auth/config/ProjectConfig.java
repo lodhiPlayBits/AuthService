@@ -73,5 +73,24 @@ public class ProjectConfig {
         
         return source;
     }
+
+    @Bean
+    public org.springframework.core.task.TaskDecorator mdcTaskDecorator() {
+        return runnable -> {
+            java.util.Map<String, String> contextMap = org.slf4j.MDC.getCopyOfContextMap();
+            return () -> {
+                try {
+                    if (contextMap != null) {
+                        org.slf4j.MDC.setContextMap(contextMap);
+                    } else {
+                        org.slf4j.MDC.clear();
+                    }
+                    runnable.run();
+                } finally {
+                    org.slf4j.MDC.clear();
+                }
+            };
+        };
+    }
 }
 

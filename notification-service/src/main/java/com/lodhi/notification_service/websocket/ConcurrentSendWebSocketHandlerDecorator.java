@@ -25,9 +25,11 @@ public class ConcurrentSendWebSocketHandlerDecorator extends WebSocketHandlerDec
     private static final int BUFFER_SIZE_BYTES = 256 * 1024;
 
     private final Map<String, WebSocketSession> decoratedSessions = new ConcurrentHashMap<>();
+    private final WebSocketSessionManager sessionManager;
 
-    public ConcurrentSendWebSocketHandlerDecorator(WebSocketHandler delegate) {
+    public ConcurrentSendWebSocketHandlerDecorator(WebSocketHandler delegate, WebSocketSessionManager sessionManager) {
         super(delegate);
+        this.sessionManager = sessionManager;
     }
 
     @Override
@@ -35,6 +37,7 @@ public class ConcurrentSendWebSocketHandlerDecorator extends WebSocketHandlerDec
         WebSocketSession decorated = new ConcurrentWebSocketSessionDecorator(
                 session, SEND_TIME_LIMIT_MS, BUFFER_SIZE_BYTES);
         decoratedSessions.put(session.getId(), decorated);
+        sessionManager.addSession(decorated);
         getDelegate().afterConnectionEstablished(decorated);
     }
 
@@ -51,7 +54,9 @@ public class ConcurrentSendWebSocketHandlerDecorator extends WebSocketHandlerDec
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus closeStatus) throws Exception {
         WebSocketSession decorated = decoratedSessions.remove(session.getId());
-        getDelegate().afterConnectionClosed(decorated != null ? decorated : session, closeStatus);
+        WebSocketSession target = decorated != null ? decorated : session;
+        sessionManager.removeSession(target);
+        getDelegate().afterConnectionClosed(target, closeStatus);
     }
 
     private WebSocketSession decorated(WebSocketSession session) {

@@ -56,7 +56,18 @@ public class LoggingFilter extends OncePerRequestFilter {
                 correlationId = UUID.randomUUID().toString();
                 log.debug("Generated new correlation ID: {}", correlationId);
             } else {
-                log.debug("Using incoming correlation ID: {}", correlationId);
+                // Sanitize correlationId: cap length to 50 characters and restrict to [A-Za-z0-9-]
+                if (correlationId.length() > 50) {
+                    correlationId = correlationId.substring(0, 50);
+                }
+                correlationId = correlationId.replaceAll("[^A-Za-z0-9-]", "");
+                
+                if (correlationId.isBlank()) {
+                    correlationId = UUID.randomUUID().toString();
+                    log.debug("Generated new correlation ID (invalid incoming): {}", correlationId);
+                } else {
+                    log.debug("Using incoming correlation ID: {}", correlationId);
+                }
             }
             
             // Extract request information
@@ -98,7 +109,7 @@ public class LoggingFilter extends OncePerRequestFilter {
         for (String headerName : CORRELATION_ID_HEADERS) {
             String value = request.getHeader(headerName);
             if (value != null && !value.isBlank()) {
-                return value;
+                return LoggingUtils.sanitizeRequestId(value);
             }
         }
         return null;
@@ -108,20 +119,7 @@ public class LoggingFilter extends OncePerRequestFilter {
      * Extract client IP address, considering proxy headers.
      */
     private String extractIpAddress(HttpServletRequest request) {
-        // Check for proxy headers
-        String ip = request.getHeader("X-Forwarded-For");
-        if (ip != null && !ip.isEmpty() && !"unknown".equalsIgnoreCase(ip)) {
-            // X-Forwarded-For can contain multiple IPs, take the first one
-            return ip.split(",")[0].trim();
-        }
-        
-        ip = request.getHeader("X-Real-IP");
-        if (ip != null && !ip.isEmpty() && !"unknown".equalsIgnoreCase(ip)) {
-            return ip;
-        }
-        
-        // Fall back to remote address
-        return request.getRemoteAddr();
+        return LoggingUtils.extractClientIp(request);
     }
 
     @Override

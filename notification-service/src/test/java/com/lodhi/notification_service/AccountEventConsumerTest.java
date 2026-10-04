@@ -36,6 +36,9 @@ class AccountEventConsumerTest {
 
     @Mock
     private SseConnectionManager sseConnectionManager;
+    
+    @Mock
+    private com.lodhi.notification_service.websocket.WebSocketSessionManager webSocketSessionManager;
 
     @Mock
     private RedisTemplate<String, Object> redisTemplate;
@@ -51,7 +54,7 @@ class AccountEventConsumerTest {
     @BeforeEach
     void setUp() {
         ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
-        consumer = new AccountEventConsumer(sseConnectionManager, redisTemplate, objectMapper);
+        consumer = new AccountEventConsumer(sseConnectionManager, webSocketSessionManager, redisTemplate, objectMapper);
     }
 
     @Test
@@ -60,7 +63,7 @@ class AccountEventConsumerTest {
         when(redisTemplate.opsForList()).thenReturn(listOperations);
 
         AccountEvent accountEvent = event("evt-1");
-        consumer.handleAccountEvent(accountEvent);
+        consumer.handleAccountEvent(accountEvent, null);
 
         verify(sseConnectionManager).sendToUser(eq(7L), eventFactoryCaptor.capture());
         assertThat(SseEventFrame.render(eventFactoryCaptor.getValue().get()))
@@ -78,7 +81,7 @@ class AccountEventConsumerTest {
         when(redisTemplate.opsForList()).thenReturn(listOperations);
 
         AccountEvent accountEvent = event(null);
-        consumer.handleAccountEvent(accountEvent);
+        consumer.handleAccountEvent(accountEvent, null);
 
         verify(sseConnectionManager).sendToUser(eq(7L), eventFactoryCaptor.capture());
         assertThat(SseEventFrame.render(eventFactoryCaptor.getValue().get()))
@@ -98,7 +101,7 @@ class AccountEventConsumerTest {
                 .timestamp(Instant.parse("2026-01-01T00:00:00Z"))
                 .build();
 
-        assertThatThrownBy(() -> consumer.handleAccountEvent(broken))
+        assertThatThrownBy(() -> consumer.handleAccountEvent(broken, null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("evt-broken");
 

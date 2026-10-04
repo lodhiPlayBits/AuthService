@@ -59,8 +59,9 @@ class ConcurrentSendWebSocketHandlerDecoratorTest {
     @Test
     void allCallbacksForAConnectionReceiveTheSameDecoratedSession() throws Exception {
         WebSocketSession raw = rawSession("session-1");
+        WebSocketSessionManager sessionManager = mock(WebSocketSessionManager.class);
         ConcurrentSendWebSocketHandlerDecorator decorator =
-                new ConcurrentSendWebSocketHandlerDecorator(capturingDelegate);
+                new ConcurrentSendWebSocketHandlerDecorator(capturingDelegate, sessionManager);
 
         decorator.afterConnectionEstablished(raw);
         decorator.handleMessage(raw, new TextMessage("hello"));
@@ -92,8 +93,9 @@ class ConcurrentSendWebSocketHandlerDecoratorTest {
             return null;
         }).when(raw).sendMessage(any());
 
+        WebSocketSessionManager sessionManager = mock(WebSocketSessionManager.class);
         ConcurrentSendWebSocketHandlerDecorator decorator =
-                new ConcurrentSendWebSocketHandlerDecorator(capturingDelegate);
+                new ConcurrentSendWebSocketHandlerDecorator(capturingDelegate, sessionManager);
         decorator.afterConnectionEstablished(raw);
         WebSocketSession decorated = established.get(0);
 
@@ -122,8 +124,9 @@ class ConcurrentSendWebSocketHandlerDecoratorTest {
     void newConnectionGetsItsOwnDecoratorInstance() throws Exception {
         WebSocketSession first = rawSession("session-a");
         WebSocketSession second = rawSession("session-b");
+        WebSocketSessionManager sessionManager = mock(WebSocketSessionManager.class);
         ConcurrentSendWebSocketHandlerDecorator decorator =
-                new ConcurrentSendWebSocketHandlerDecorator(capturingDelegate);
+                new ConcurrentSendWebSocketHandlerDecorator(capturingDelegate, sessionManager);
 
         decorator.afterConnectionEstablished(first);
         decorator.handleMessage(first, new TextMessage("x"));

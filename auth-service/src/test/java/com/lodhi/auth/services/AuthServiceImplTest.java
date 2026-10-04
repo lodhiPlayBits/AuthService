@@ -53,6 +53,7 @@ class AuthServiceImplTest {
     @Mock private AuditService auditService;
     @Mock private TokenHashService tokenHashService;
     @Mock private RefreshTokenFamilyService refreshTokenFamilyService;
+    @Mock private AccountEventProducer accountEventProducer;
 
     @Mock private HttpServletRequest request;
     @Mock private HttpServletResponse response;

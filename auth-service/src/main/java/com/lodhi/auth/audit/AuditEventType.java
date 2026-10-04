@@ -6,6 +6,8 @@ public enum AuditEventType {
     LOGIN_FAILURE,
     LOGOUT,
     TOKEN_REFRESH,
+    TOKEN_REFRESH_FAILURE,
+    TOKEN_REUSE,
     
     // Account management events
     ACCOUNT_LOCKED,

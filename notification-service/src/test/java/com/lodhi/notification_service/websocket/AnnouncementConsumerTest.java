@@ -88,14 +88,14 @@ class AnnouncementConsumerTest {
         ArgumentCaptor<Object> payloadCaptor = ArgumentCaptor.forClass(Object.class);
         verify(messagingTemplate).convertAndSend(eq(StompDestinations.ANNOUNCEMENTS_TOPIC), payloadCaptor.capture());
 
-        ObjectNode payload = (ObjectNode) payloadCaptor.getValue();
-        assertEquals("ANNOUNCEMENT", payload.get("type").asText());
-        assertEquals("ann-1", payload.get("announcementId").asText());
-        assertEquals("Maintenance", payload.get("title").asText());
-        assertEquals("Scheduled maintenance tonight", payload.get("message").asText());
-        assertEquals("HIGH", payload.get("priority").asText());
-        assertEquals(1L, payload.get("sentBy").asLong());
-        assertNotNull(payload.get("timestamp").asText());
+        java.util.Map<String, Object> payload = (java.util.Map<String, Object>) payloadCaptor.getValue();
+        assertEquals("ANNOUNCEMENT", payload.get("type").toString());
+        assertEquals("ann-1", payload.get("announcementId").toString());
+        assertEquals("Maintenance", payload.get("title").toString());
+        assertEquals("Scheduled maintenance tonight", payload.get("message").toString());
+        assertEquals("HIGH", payload.get("priority").toString());
+        assertEquals(1L, Long.parseLong(payload.get("sentBy").toString()));
+        assertNotNull(payload.get("timestamp").toString());
     }
 
     @Test

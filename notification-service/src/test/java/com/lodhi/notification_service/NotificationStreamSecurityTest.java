@@ -111,9 +111,9 @@ class NotificationStreamSecurityTest {
     }
 
     private String mintToken(String subject, Instant issuedAt, Instant expiresAt, String issuer, String audience) {
-        SecretKey key = new SecretKeySpec(jwtSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
-        NimbusJwtEncoder encoder = NimbusJwtEncoder.withSecretKey(key)
-                .algorithm(MacAlgorithm.HS256)
+        SecretKey key = new SecretKeySpec(jwtSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA512");
+        org.springframework.security.oauth2.jwt.NimbusJwtEncoder encoder = org.springframework.security.oauth2.jwt.NimbusJwtEncoder.withSecretKey(key)
+                .algorithm(org.springframework.security.oauth2.jose.jws.MacAlgorithm.HS512)
                 .build();
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .issuer(issuer)

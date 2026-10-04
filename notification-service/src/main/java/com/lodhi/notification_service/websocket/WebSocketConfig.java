@@ -41,6 +41,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     private final JwtHandshakeInterceptor jwtHandshakeInterceptor;
     private final StompHandshakeHandler stompHandshakeHandler;
     private final SubscriptionAuthorizationInterceptor subscriptionAuthorizationInterceptor;
+    private final WebSocketSessionManager webSocketSessionManager;
 
     @Value("${websocket.allowed-origins}")
     private String allowedOrigins;
@@ -71,7 +72,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     public void configureWebSocketTransport(WebSocketTransportRegistration registration) {
         // Serializes sends per session so broker heartbeats, Kafka broadcasts and
         // request-handling threads can never write to one connection concurrently.
-        registration.addDecoratorFactory(ConcurrentSendWebSocketHandlerDecorator::new);
+        registration.addDecoratorFactory(handler -> new ConcurrentSendWebSocketHandlerDecorator(handler, webSocketSessionManager));
     }
 
     @Bean
