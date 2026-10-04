@@ -4,9 +4,18 @@ on:
   push:
     branches:
       - develop
+      - main
+    paths:
+      - 'auth-service/**'
+      - 'notification-service/**'
+      - '.github/workflows/ecr-push.yml'
   pull_request:
     branches:
       - develop
+    paths:
+      - 'auth-service/**'
+      - 'notification-service/**'
+      - '.github/workflows/ecr-push.yml'
 
 permissions:
   contents: read
@@ -14,15 +23,56 @@ permissions:
 
 jobs:
   validate:
-    name: Validate Workflow
+    name: Validate Service Structure
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Verify repository structure
+      - name: Verify service files
         run: |
-          test -d auth-service
-          test -d notification-service
-          echo "Repository structure verified"
+          set -e
+          test -f auth-service/Dockerfile
+          test -f auth-service/pom.xml
+          test -f notification-service/Dockerfile
+          test -f notification-service/pom.xml
+          echo "Both service structures verified"
+
+  build-and-push:
+    name: Build and Push Docker Images
+    needs: validate
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push auth-service
+        uses: docker/build-push-action@v6
+        with:
+          context: ./auth-service
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/auth-service:${{ github.sha }}
+            ${{ steps.login-ecr.outputs.registry }}/auth-service:latest
+
+      - name: Build and push notification-service
+        uses: docker/build-push-action@v6
+        with:
+          context: ./notification-service
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/notification-service:${{ github.sha }}
+            ${{ steps.login-ecr.outputs.registry }}/notification-service:latest
