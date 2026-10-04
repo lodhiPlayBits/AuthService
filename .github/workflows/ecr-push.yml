@@ -1,4 +1,4 @@
-name: Build and Push to ECR
+name: Build and Push Docker Images
 
 on:
   push:
@@ -9,6 +9,7 @@ on:
       - 'auth-service/**'
       - 'notification-service/**'
       - '.github/workflows/ecr-push.yml'
+
   pull_request:
     branches:
       - develop
@@ -17,9 +18,15 @@ on:
       - 'notification-service/**'
       - '.github/workflows/ecr-push.yml'
 
+  workflow_dispatch:
+
 permissions:
   contents: read
   id-token: write
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ECR_REGISTRY: 117963306411.dkr.ecr.ap-northeast-1.amazonaws.com
 
 jobs:
   validate:
@@ -31,29 +38,50 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Verify service files
+        shell: bash
         run: |
-          set -e
+          set -euo pipefail
+
           test -f auth-service/Dockerfile
           test -f auth-service/pom.xml
           test -f notification-service/Dockerfile
           test -f notification-service/pom.xml
-          echo "Both service structures verified"
+
+          echo "Both service structures verified."
 
   build-and-push:
-    name: Build and Push Docker Images
+    name: Build and Push to ECR
     needs: validate
-    if: github.event_name == 'push'
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Validate AWS configuration
+        shell: bash
+        env:
+          ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$ROLE_ARN" =~ ^arn:aws:iam::117963306411:role/.+ ]]; then
+            echo "::error::AWS_ROLE_ARN must contain the full IAM role ARN."
+            exit 1
+          fi
+
+          if [[ "$AWS_REGION" != "ap-northeast-1" ]]; then
+            echo "::error::AWS_REGION must match the ECR repository region."
+            exit 1
+          fi
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
+          audience: sts.amazonaws.com
 
       - name: Login to Amazon ECR
         id: login-ecr
@@ -65,8 +93,8 @@ jobs:
           context: ./auth-service
           push: true
           tags: |
-            ${{ steps.login-ecr.outputs.registry }}/auth-service:${{ github.sha }}
-            ${{ steps.login-ecr.outputs.registry }}/auth-service:latest
+            ${{ env.ECR_REGISTRY }}/auth-service:${{ github.sha }}
+            ${{ env.ECR_REGISTRY }}/auth-service:latest
 
       - name: Build and push notification-service
         uses: docker/build-push-action@v6
@@ -74,7 +102,5 @@ jobs:
           context: ./notification-service
           push: true
           tags: |
-            ${{ steps.login-ecr.outputs.registry }}/notification-service:${{ github.sha }}
-            ${{ steps.login-ecr.outputs.registry }}/notification-service:latest
-
-            
+            ${{ env.ECR_REGISTRY }}/notification-service:${{ github.sha }}
+            ${{ env.ECR_REGISTRY }}/notification-service:latest
