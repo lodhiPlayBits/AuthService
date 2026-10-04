@@ -29,9 +29,14 @@ public class AuditService {
             String userAgent
     ) {
         try {
+            String dbUsername = username;
+            if (!success && eventType == AuditEventType.LOGIN_FAILURE) {
+                dbUsername = com.lodhi.auth.utils.LoggingUtils.maskIdentifier(username);
+            }
+
             AuditLog auditLog = AuditLog.builder()
                     .userId(userId)
-                    .username(username)
+                    .username(dbUsername)
                     .eventType(eventType)
                     .success(success)
                     .details(details)
@@ -43,7 +48,7 @@ public class AuditService {
             auditLogRepository.save(auditLog);
             
             log.info("Audit logged: user={}, event={}, success={}, ip={}", 
-                username, eventType, success, auditLog.getIpAddress());
+                com.lodhi.auth.utils.LoggingUtils.maskIdentifier(username), eventType, success, auditLog.getIpAddress());
                 
         } catch (Exception e) {
             log.error("Failed to save audit log", e);
@@ -62,7 +67,7 @@ public class AuditService {
             logEventAsync(userId, username, eventType, success, details, "unknown", "unknown");
             return;
         }
-        String ipAddress = extractIpAddress(request);
+        String ipAddress = com.lodhi.auth.utils.LoggingUtils.extractClientIp(request);
         String userAgent = request.getHeader("User-Agent");
         logEventAsync(userId, username, eventType, success, details, ipAddress, userAgent);
     }
@@ -80,6 +85,16 @@ public class AuditService {
     public void logTokenRefresh(Long userId, String username, HttpServletRequest request) {
         logEvent(userId, username, AuditEventType.TOKEN_REFRESH, true, 
                 "Token refreshed", request);
+    }
+    
+    public void logTokenRefreshFailure(String identifier, String reason, HttpServletRequest request) {
+        logEvent(null, identifier, AuditEventType.TOKEN_REFRESH, false, 
+                "Token refresh failed: " + reason, request);
+    }
+
+    public void logTokenReuse(Long userId, String identifier, HttpServletRequest request) {
+        logEvent(userId, identifier, AuditEventType.TOKEN_REUSE, false, 
+                "Token reuse detected", request);
     }
 
     public void logLogout(Long userId, String username, HttpServletRequest request) {
@@ -114,24 +129,10 @@ public class AuditService {
             auditLogRepository.save(auditLog);
             
             log.info("Audit logged (service): user={}, event={}, success={}", 
-                username, eventType, success);
+                com.lodhi.auth.utils.LoggingUtils.maskIdentifier(username), eventType, success);
                 
         } catch (Exception e) {
             log.error("Failed to save audit log", e);
         }
-    }
-
-    private String extractIpAddress(HttpServletRequest request) {
-        String xForwardedFor = request.getHeader("X-Forwarded-For");
-        if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
-            return xForwardedFor.split(",")[0].trim();
-        }
-        
-        String xRealIp = request.getHeader("X-Real-IP");
-        if (xRealIp != null && !xRealIp.isEmpty()) {
-            return xRealIp;
-        }
-        
-        return request.getRemoteAddr();
     }
 }

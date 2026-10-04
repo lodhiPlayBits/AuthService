@@ -22,6 +22,7 @@ import com.lodhi.auth.dtos.request.CreateUserRequestDTO;
 import com.lodhi.auth.dtos.response.CreateUserResponseDTO;
 import com.lodhi.auth.security.JwtPrincipal;
 import com.lodhi.auth.services.AuthService;
+import com.lodhi.auth.security.CookieService;
 import com.lodhi.auth.services.RefreshTokenService;
 import com.lodhi.auth.utils.AuthUtils;
 
@@ -42,6 +43,9 @@ class AuthControllerTest {
 
     @Mock
     private AuthUtils authUtils;
+
+    @Mock
+    private CookieService cookieService;
 
     @Mock
     private HttpServletRequest request;
@@ -81,7 +85,7 @@ class AuthControllerTest {
     void refreshToken_ShouldReturnOk() {
         when(authUtils.readRefreshTokenFromCookie(request)).thenReturn(Optional.of("token"));
         TokenResponse res = new TokenResponse("new_access", 3600, "Bearer", new CreateUserResponseDTO());
-        when(refreshTokenService.rotate("token", response)).thenReturn(res);
+        when(refreshTokenService.rotate("token", request, response)).thenReturn(res);
         
         ResponseEntity<TokenResponse> entity = authController.refreshToken(request, response);
         assertEquals(HttpStatus.OK, entity.getStatusCode());
@@ -106,11 +110,10 @@ class AuthControllerTest {
     }
 
     @Test
-    void logout_MissingCookie_ShouldThrowException() {
+    void logout_MissingCookie_ShouldReturnNoContent() {
         when(authUtils.readRefreshTokenFromCookie(request)).thenReturn(Optional.empty());
-        org.junit.jupiter.api.Assertions.assertThrows(BadCredentialsException.class, () -> {
-            authController.logout(request, response);
-        });
+        ResponseEntity<Void> entity = authController.logout(request, response);
+        assertEquals(HttpStatus.NO_CONTENT, entity.getStatusCode());
     }
 
     @Test

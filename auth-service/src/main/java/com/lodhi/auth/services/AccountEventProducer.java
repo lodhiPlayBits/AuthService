@@ -38,9 +38,16 @@ public class AccountEventProducer {
 
         // Use userId as key to ensure all events for a user go to the same partition (ordering)
         String key = String.valueOf(userId);
+        String requestId = org.slf4j.MDC.get(com.lodhi.auth.utils.LoggingUtils.REQUEST_ID);
+
+        org.springframework.messaging.Message<AccountEvent> kafkaMessage = org.springframework.messaging.support.MessageBuilder
+                .withPayload(event)
+                .setHeader(org.springframework.kafka.support.KafkaHeaders.TOPIC, KafkaTopicConfig.ACCOUNT_EVENTS_TOPIC)
+                .setHeader(org.springframework.kafka.support.KafkaHeaders.KEY, key)
+                .setHeader("X-Request-ID", requestId != null ? requestId : "")
+                .build();
         
-        CompletableFuture<SendResult<String, AccountEvent>> future = 
-            kafkaTemplate.send(KafkaTopicConfig.ACCOUNT_EVENTS_TOPIC, key, event);
+        CompletableFuture<SendResult<String, AccountEvent>> future = kafkaTemplate.send(kafkaMessage);
 
         future.whenComplete((result, ex) -> {
             if (ex == null) {

@@ -20,6 +20,35 @@ public class LoggingUtils {
     public static final String HTTP_METHOD = "httpMethod";
     public static final String SESSION_ID = "sessionId";
 
+    public static String extractClientIp(jakarta.servlet.http.HttpServletRequest request) {
+        String xRealIp = request.getHeader("X-Real-IP");
+        if (xRealIp != null && !xRealIp.isEmpty() && !"unknown".equalsIgnoreCase(xRealIp)) {
+            return xRealIp;
+        }
+        String xForwardedFor = request.getHeader("X-Forwarded-For");
+        if (xForwardedFor != null && !xForwardedFor.isEmpty() && !"unknown".equalsIgnoreCase(xForwardedFor)) {
+            return xForwardedFor.split(",")[0].trim();
+        }
+        return request.getRemoteAddr();
+    }
+
+    public static String sanitizeRequestId(String requestId) {
+        if (requestId == null) return null;
+        String clean = requestId.replaceAll("[^A-Za-z0-9-]", "");
+        return clean.length() > 50 ? clean.substring(0, 50) : clean;
+    }
+
+    public static String maskIdentifier(String identifier) {
+        if (identifier == null || identifier.isBlank()) return "unknown";
+        if (identifier.contains("@")) {
+            String[] parts = identifier.split("@", 2);
+            String name = parts[0];
+            if (name.length() <= 2) return "***@" + parts[1];
+            return name.charAt(0) + "***" + name.charAt(name.length() - 1) + "@" + parts[1];
+        }
+        if (identifier.length() <= 2) return "***";
+        return identifier.charAt(0) + "***" + identifier.charAt(identifier.length() - 1);
+    }
     /**
      * Add user context to MDC for all subsequent logs in this thread.
      * Call this after successful authentication.

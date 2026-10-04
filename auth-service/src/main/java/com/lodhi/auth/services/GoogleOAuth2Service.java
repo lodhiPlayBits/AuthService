@@ -134,7 +134,7 @@ public class GoogleOAuth2Service {
 
         // 6. Audit
         if (isNewUser) {
-            log.info("New Google OAuth user registered: email={}", email);
+            log.info("New Google OAuth user registered: email={}", com.lodhi.auth.utils.LoggingUtils.maskIdentifier(email));
         }
         auditService.logLoginSuccess(user.getId(), user.getEmail(), request);
 

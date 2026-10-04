@@ -15,9 +15,19 @@
         </encoder>
     </appender>
     
+    <!-- Async Console Appender for high-throughput non-blocking logging -->
+    <appender name="ASYNC_CONSOLE" class="ch.qos.logback.classic.AsyncAppender">
+        <appender-ref ref="CONSOLE"/>
+        <queueSize>1024</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <neverBlock>true</neverBlock>
+        <includeCallerData>false</includeCallerData>
+        <maxFlushTime>1000</maxFlushTime>
+    </appender>
+
     <!-- Default configuration (always active) -->
     <root level="INFO">
-        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="ASYNC_CONSOLE"/>
     </root>
         <!-- Console Appender with JSON format -->
         <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
@@ -69,15 +79,13 @@
         
     <!-- Application-specific loggers -->
     <logger name="com.lodhi.auth" level="INFO"/>
-    <logger name="com.lodhi.auth.security" level="DEBUG"/>
+    <logger name="com.lodhi.auth.security" level="INFO"/>
     <logger name="com.lodhi.auth.audit" level="INFO"/>
     
     <!-- Third-party loggers -->
     <logger name="org.springframework.security" level="WARN"/>
     <logger name="org.springframework.web" level="WARN"/>
     <logger name="org.hibernate" level="WARN"/>
-    <logger name="org.hibernate.SQL" level="DEBUG"/>
-    <logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="TRACE"/>
     
     <!-- Reduce HikariCP noise -->
     <logger name="com.zaxxer.hikari" level="INFO"/>

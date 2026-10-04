@@ -77,7 +77,7 @@ public class AuthController {
         String refreshToken = authUtils.readRefreshTokenFromCookie(request)
                 .orElseThrow(() -> new BadCredentialsException("Refresh token missing from cookie"));
 
-        return ok(refreshTokenService.rotate(refreshToken, response));
+        return ok(refreshTokenService.rotate(refreshToken, request, response));
     }
 
     /**

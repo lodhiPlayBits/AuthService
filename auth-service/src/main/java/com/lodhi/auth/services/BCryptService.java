@@ -62,10 +62,18 @@ public class BCryptService {
                 );
             }
 
+            java.util.Map<String, String> mdcContext = org.slf4j.MDC.getCopyOfContextMap();
             // Submit to virtual thread executor
-            Future<Boolean> future = bcryptExecutor.submit(
-                () -> passwordEncoder.matches(rawPassword, encodedPassword)
-            );
+            Future<Boolean> future = bcryptExecutor.submit(() -> {
+                if (mdcContext != null) {
+                    org.slf4j.MDC.setContextMap(mdcContext);
+                }
+                try {
+                    return passwordEncoder.matches(rawPassword, encodedPassword);
+                } finally {
+                    org.slf4j.MDC.clear();
+                }
+            });
 
             // Wait for result (virtual thread, non-blocking on OS level)
             return future.get();
