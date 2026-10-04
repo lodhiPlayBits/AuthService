@@ -49,3 +49,7 @@ security:
 oauth2:
   google:
     client-id: "test-google-client-id"
+
+logging:
+  file:
+    name: ${java.io.tmpdir:-/tmp}/auth-service-test.log

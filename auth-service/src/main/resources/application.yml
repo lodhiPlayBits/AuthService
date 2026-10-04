@@ -155,9 +155,9 @@ logging:
     org.flywaydb: ${LOG_LEVEL_FLYWAY:INFO}
     com.zaxxer.hikari: ${LOG_LEVEL_HIKARI:INFO}
   pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{requestId}] %-5level %logger{36} - %msg%n"
   file:
-    name: ${LOG_FILE:/var/log/auth-service/auth-service.log}
+    name: ${LOG_FILE:${LOG_PATH:-${java.io.tmpdir:-/tmp}}/auth-service.log}
 
 # =====================================================
 # Actuator Configuration
