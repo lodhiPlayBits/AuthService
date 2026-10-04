@@ -27,17 +27,18 @@ import com.lodhi.notification_service.websocket.AnnouncementStompController.Anno
 @ExtendWith(MockitoExtension.class)
 class AnnouncementStompControllerTest {
 
-    private static final StompPrincipal ADMIN = new StompPrincipal(1L, List.of("USER", "ADMIN"));
-    private static final StompPrincipal USER = new StompPrincipal(2L, List.of("USER"));
+    private static final StompPrincipal ADMIN = new StompPrincipal(1L, List.of("USER", "ADMIN"), java.time.Instant.now().plusSeconds(3600));
+    private static final StompPrincipal USER = new StompPrincipal(2L, List.of("USER"), java.time.Instant.now().plusSeconds(3600));
 
     @Mock private AnnouncementProducer announcementProducer;
     @Mock private SimpMessagingTemplate messagingTemplate;
+    @Mock private org.springframework.kafka.core.KafkaTemplate<String, Object> mockKafkaTemplate;
 
     private AnnouncementStompController controller;
 
     @BeforeEach
     void setUp() {
-        controller = new AnnouncementStompController(announcementProducer, messagingTemplate, new ObjectMapper());
+        controller = new AnnouncementStompController(announcementProducer, messagingTemplate, new ObjectMapper(), mockKafkaTemplate);
     }
 
     @Test
@@ -66,9 +67,9 @@ class AnnouncementStompControllerTest {
     void sendAnnouncement_AsRegularUser_SendsErrorAndNeverPublishes() {
         controller.sendAnnouncement(new AnnouncementRequest("Maintenance", "Tonight", "HIGH"), USER);
 
-        ObjectNode error = captureUserPayload("2", StompDestinations.ERRORS_QUEUE);
-        assertEquals("ERROR", error.get("type").asText());
-        assertEquals("Unauthorized to send announcements", error.get("message").asText());
+        java.util.Map<String, Object> error = captureUserPayload("2", StompDestinations.ERRORS_QUEUE);
+        assertEquals("ERROR", error.get("type").toString());
+        assertEquals("Unauthorized to send announcements", error.get("message").toString());
         verifyNoInteractions(announcementProducer);
     }
 
@@ -83,8 +84,8 @@ class AnnouncementStompControllerTest {
     void sendAnnouncement_NullRequest_SendsError() {
         controller.sendAnnouncement(null, ADMIN);
 
-        ObjectNode error = captureUserPayload("1", StompDestinations.ERRORS_QUEUE);
-        assertEquals("Payload is required", error.get("message").asText());
+        java.util.Map<String, Object> error = captureUserPayload("1", StompDestinations.ERRORS_QUEUE);
+        assertEquals("Payload is required", error.get("message").toString());
         verifyNoInteractions(announcementProducer);
     }
 
@@ -94,8 +95,8 @@ class AnnouncementStompControllerTest {
 
         controller.sendAnnouncement(new AnnouncementRequest(longTitle, "Tonight", "HIGH"), ADMIN);
 
-        ObjectNode error = captureUserPayload("1", StompDestinations.ERRORS_QUEUE);
-        assertEquals("Title or message exceeds maximum allowed length", error.get("message").asText());
+        java.util.Map<String, Object> error = captureUserPayload("1", StompDestinations.ERRORS_QUEUE);
+        assertEquals("Title or message exceeds maximum allowed length", error.get("message").toString());
         verifyNoInteractions(announcementProducer);
     }
 
@@ -113,35 +114,35 @@ class AnnouncementStompControllerTest {
     void acknowledge_SendsConfirmationToUserAndNotifiesAdmins() {
         controller.acknowledgeAnnouncement(new AnnouncementActionRequest("ann-1"), USER);
 
-        ObjectNode confirmation = captureUserPayload("2", StompDestinations.CONFIRMATIONS_QUEUE);
-        assertEquals("ACK_CONFIRMED", confirmation.get("type").asText());
-        assertEquals("ann-1", confirmation.get("announcementId").asText());
+        java.util.Map<String, Object> confirmation = captureUserPayload("2", StompDestinations.CONFIRMATIONS_QUEUE);
+        assertEquals("ACK_CONFIRMED", confirmation.get("type").toString());
+        assertEquals("ann-1", confirmation.get("announcementId").toString());
 
-        ObjectNode adminMsg = captureAdminPayload();
-        assertEquals("USER_RESPONSE", adminMsg.get("type").asText());
-        assertEquals("ann-1", adminMsg.get("announcementId").asText());
-        assertEquals(2L, adminMsg.get("userId").asLong());
-        assertEquals("ACK", adminMsg.get("responseAction").asText());
-        assertNotNull(adminMsg.get("timestamp").asText());
+        java.util.Map<String, Object> adminMsg = captureAdminPayload();
+        assertEquals("USER_RESPONSE", adminMsg.get("type").toString());
+        assertEquals("ann-1", adminMsg.get("announcementId").toString());
+        assertEquals(2L, Long.parseLong(adminMsg.get("userId").toString()));
+        assertEquals("ACK", adminMsg.get("responseAction").toString());
+        assertNotNull(adminMsg.get("timestamp"));
     }
 
     @Test
     void dismiss_SendsConfirmationToUserAndNotifiesAdmins() {
         controller.dismissAnnouncement(new AnnouncementActionRequest("ann-2"), USER);
 
-        ObjectNode confirmation = captureUserPayload("2", StompDestinations.CONFIRMATIONS_QUEUE);
-        assertEquals("DISMISS_CONFIRMED", confirmation.get("type").asText());
+        java.util.Map<String, Object> confirmation = captureUserPayload("2", StompDestinations.CONFIRMATIONS_QUEUE);
+        assertEquals("DISMISS_CONFIRMED", confirmation.get("type").toString());
 
-        ObjectNode adminMsg = captureAdminPayload();
-        assertEquals("DISMISS", adminMsg.get("responseAction").asText());
+        java.util.Map<String, Object> adminMsg = captureAdminPayload();
+        assertEquals("DISMISS", adminMsg.get("responseAction").toString());
     }
 
     @Test
     void acknowledge_BlankId_SendsErrorOnly() {
         controller.acknowledgeAnnouncement(new AnnouncementActionRequest("  "), USER);
 
-        ObjectNode error = captureUserPayload("2", StompDestinations.ERRORS_QUEUE);
-        assertEquals("announcementId is required", error.get("message").asText());
+        java.util.Map<String, Object> error = captureUserPayload("2", StompDestinations.ERRORS_QUEUE);
+        assertEquals("announcementId is required", error.get("message").toString());
         verify(messagingTemplate, only()).convertAndSendToUser(eq("2"), eq(StompDestinations.ERRORS_QUEUE), any());
     }
 
@@ -159,15 +160,15 @@ class AnnouncementStompControllerTest {
         verifyNoInteractions(messagingTemplate);
     }
 
-    private ObjectNode captureUserPayload(String user, String destination) {
+    private java.util.Map<String, Object> captureUserPayload(String user, String destination) {
         ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
         verify(messagingTemplate).convertAndSendToUser(eq(user), eq(destination), captor.capture());
-        return (ObjectNode) captor.getValue();
+        return (java.util.Map<String, Object>) captor.getValue();
     }
 
-    private ObjectNode captureAdminPayload() {
+    private java.util.Map<String, Object> captureAdminPayload() {
         ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
-        verify(messagingTemplate).convertAndSend(eq(StompDestinations.ADMIN_RESPONSES_TOPIC), captor.capture());
-        return (ObjectNode) captor.getValue();
+        verify(mockKafkaTemplate).send(eq(com.lodhi.notification_service.config.KafkaAnnouncementConfig.ADMIN_RESPONSES_TOPIC), org.mockito.ArgumentMatchers.anyString(), captor.capture());
+        return (java.util.Map<String, Object>) captor.getValue();
     }
 }

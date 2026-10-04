@@ -88,4 +88,18 @@ public class AnnouncementConsumer {
             log.debug("Cleaned up {} expired announcements from deduplication cache", removed);
         }
     }
+
+    @KafkaListener(
+        topics = KafkaAnnouncementConfig.ADMIN_RESPONSES_TOPIC,
+        containerFactory = "adminResponseKafkaListenerContainerFactory"
+    )
+    public void handleAdminResponse(Map<String, Object> event) {
+        log.info("Received admin response from Kafka");
+        try {
+            messagingTemplate.convertAndSend(StompDestinations.ADMIN_RESPONSES_TOPIC, (Object) event);
+            log.info("Published admin response to {}", StompDestinations.ADMIN_RESPONSES_TOPIC);
+        } catch (Exception e) {
+            log.error("Failed to process and broadcast admin response", e);
+        }
+    }
 }

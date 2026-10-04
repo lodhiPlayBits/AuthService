@@ -136,6 +136,20 @@ public class SseConnectionManager {
         log.info("SSE emitter removed for userId={}, remaining connections={}", userId, emitters.size());
     }
 
+    public void closeAllConnections(Long userId) {
+        List<SseEmitter> userEmitters = connections.remove(userId);
+        if (userEmitters != null) {
+            for (SseEmitter emitter : userEmitters) {
+                try {
+                    emitter.complete();
+                } catch (Exception e) {
+                    log.warn("Error closing SSE connection for userId={}: {}", userId, e.getMessage());
+                }
+            }
+            log.info("Closed {} SSE connection(s) for userId={}", userEmitters.size(), userId);
+        }
+    }
+
     /** Overridable seam so tests can supply emitters with controlled behaviour. */
     protected SseEmitter createEmitter() {
         return new SseEmitter(EMITTER_TIMEOUT_MS);

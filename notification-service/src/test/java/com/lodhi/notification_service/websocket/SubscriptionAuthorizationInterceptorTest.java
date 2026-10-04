@@ -17,8 +17,8 @@ import org.springframework.security.access.AccessDeniedException;
 
 class SubscriptionAuthorizationInterceptorTest {
 
-    private static final StompPrincipal ADMIN = new StompPrincipal(1L, List.of("USER", "ADMIN"));
-    private static final StompPrincipal USER = new StompPrincipal(2L, List.of("USER"));
+    private static final StompPrincipal ADMIN = new StompPrincipal(1L, List.of("USER", "ADMIN"), java.time.Instant.now().plusSeconds(3600));
+    private static final StompPrincipal USER = new StompPrincipal(2L, List.of("USER"), java.time.Instant.now().plusSeconds(3600));
 
     private final SubscriptionAuthorizationInterceptor interceptor = new SubscriptionAuthorizationInterceptor();
     private final MessageChannel channel = mock(MessageChannel.class);

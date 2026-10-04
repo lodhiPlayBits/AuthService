@@ -65,6 +65,18 @@ public class KafkaAnnouncementConfig {
                 .build();
     }
 
+    public static final String ADMIN_RESPONSES_TOPIC = "admin-responses";
+
+    @Bean
+    public NewTopic adminResponsesTopic() {
+        return TopicBuilder.name(ADMIN_RESPONSES_TOPIC)
+                .partitions(3)
+                .replicas(replicationFactor)
+                .config(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_DELETE)
+                .config(TopicConfig.RETENTION_MS_CONFIG, "604800000") // 7 days
+                .build();
+    }
+
     @Bean
     public ProducerFactory<String, Object> announcementProducerFactory() {
         Map<String, Object> config = new HashMap<>();
@@ -125,6 +137,28 @@ public class KafkaAnnouncementConfig {
         factory.setConsumerFactory(announcementConsumerFactory());
         factory.setConcurrency(1);
         factory.setCommonErrorHandler(announcementErrorHandler);
+        factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.RECORD);
+        return factory;
+    }
+
+    @Bean
+    public ConsumerFactory<String, java.util.Map<String, Object>> adminResponseConsumerFactory() {
+        Map<String, Object> config = new HashMap<>();
+        config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        config.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
+        config.put(ConsumerConfig.GROUP_ID_CONFIG, "ws-admin-responses-" + UUID.randomUUID());
+        config.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
+        config.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
+        config.put(JsonDeserializer.TRUSTED_PACKAGES, "*");
+        return new DefaultKafkaConsumerFactory<>(config, new StringDeserializer(), new JsonDeserializer<>(Map.class, false));
+    }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, java.util.Map<String, Object>> adminResponseKafkaListenerContainerFactory() {
+        ConcurrentKafkaListenerContainerFactory<String, java.util.Map<String, Object>> factory = new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(adminResponseConsumerFactory());
+        factory.setConcurrency(1);
         factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.RECORD);
         return factory;
     }

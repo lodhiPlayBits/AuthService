@@ -92,7 +92,11 @@ public class SecurityConfig {
             @Value("${security.jwt.issuer}") String issuer,
             @Value("${security.jwt.audience}") String audience) {
 
-        SecretKey key = new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA512");
+        byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
+        if (keyBytes.length < 64) {
+            throw new IllegalArgumentException("JWT secret must be at least 64 bytes (512 bits) for HS512 algorithm");
+        }
+        SecretKey key = new SecretKeySpec(keyBytes, "HmacSHA512");
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(key)
                 .macAlgorithm(MacAlgorithm.HS512)
                 .build();

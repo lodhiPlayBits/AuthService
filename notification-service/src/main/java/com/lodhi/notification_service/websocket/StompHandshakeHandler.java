@@ -26,7 +26,7 @@ public class StompHandshakeHandler extends DefaultHandshakeHandler {
     protected Principal determineUser(ServerHttpRequest request, WebSocketHandler wsHandler,
                                       Map<String, Object> attributes) {
         if (attributes.get(JwtHandshakeInterceptor.JWT_ATTRIBUTE) instanceof Jwt jwt) {
-            return new StompPrincipal(Long.parseLong(jwt.getSubject()), extractRoles(jwt));
+            return new StompPrincipal(Long.parseLong(jwt.getSubject()), extractRoles(jwt), jwt.getExpiresAt());
         }
         return null;
     }
