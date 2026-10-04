@@ -1,106 +1,55 @@
-name: Build and Push Docker Images
+name: CI
 
 on:
-  push:
-    branches:
-      - develop
-      - main
-    paths:
-      - 'auth-service/**'
-      - 'notification-service/**'
-      - '.github/workflows/ecr-push.yml'
-
   pull_request:
-    branches:
-      - develop
-    paths:
-      - 'auth-service/**'
-      - 'notification-service/**'
-      - '.github/workflows/ecr-push.yml'
-
-  workflow_dispatch:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
 
 permissions:
-  contents: read
   id-token: write
+  contents: read
 
 env:
-  AWS_REGION: ${{ secrets.AWS_REGION }}
-  ECR_REGISTRY: 117963306411.dkr.ecr.ap-northeast-1.amazonaws.com
+  AWS_REGION: ap-northeast-1
+  ECR_REPOSITORY: auth-service
 
 jobs:
-  validate:
-    name: Validate Service Structure
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Verify service files
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          test -f auth-service/Dockerfile
-          test -f auth-service/pom.xml
-          test -f notification-service/Dockerfile
-          test -f notification-service/pom.xml
-
-          echo "Both service structures verified."
-
   build-and-push:
-    name: Build and Push to ECR
-    needs: validate
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Validate AWS configuration
-        shell: bash
-        env:
-          ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
-        run: |
-          set -euo pipefail
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven   # use gradle if that's your build tool
 
-          if [[ ! "$ROLE_ARN" =~ ^arn:aws:iam::117963306411:role/.+ ]]; then
-            echo "::error::AWS_ROLE_ARN must contain the full IAM role ARN."
-            exit 1
-          fi
-
-          if [[ "$AWS_REGION" != "ap-northeast-1" ]]; then
-            echo "::error::AWS_REGION must match the ECR repository region."
-            exit 1
-          fi
+      - name: Build and test
+        run: mvn -B verify
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
-          audience: sts.amazonaws.com
+          role-to-assume: arn:aws:iam::117963306411:role/GitHubActionsECRPushRole
+          aws-region: ${{ env.AWS_REGION }}
 
-      - name: Login to Amazon ECR
-        id: login-ecr
+      - name: Login to ECR
+        id: ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build and push auth-service
-        uses: docker/build-push-action@v6
-        with:
-          context: ./auth-service
-          push: true
-          tags: |
-            ${{ env.ECR_REGISTRY }}/auth-service:${{ github.sha }}
-            ${{ env.ECR_REGISTRY }}/auth-service:latest
+      - name: Set image tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "tag=pr-${{ github.event.number }}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+          fi
 
-      - name: Build and push notification-service
-        uses: docker/build-push-action@v6
-        with:
-          context: ./notification-service
-          push: true
-          tags: |
-            ${{ env.ECR_REGISTRY }}/notification-service:${{ github.sha }}
-            ${{ env.ECR_REGISTRY }}/notification-service:latest
+      - name: Build and push image
+        run: |
+          IMAGE=${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.tag.outputs.tag }}
+          docker build -t $IMAGE .
+          docker push $IMAGE
