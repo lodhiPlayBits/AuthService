@@ -80,7 +80,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Trivy filesystem scan
-        uses: aquasecurity/trivy-action@6e7b7d1fd3e4fde0c5fa4c1b101080233d17e76e # v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           scan-ref: ./${{ matrix.name }}
@@ -182,7 +182,7 @@ jobs:
         run: docker build -t ${{ matrix.name }}:${{ steps.tag.outputs.tag }} ./${{ matrix.name }}
 
       - name: Trivy image scan
-        uses: aquasecurity/trivy-action@6e7b7d1fd3e4fde0c5fa4c1b101080233d17e76e # v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ matrix.name }}:${{ steps.tag.outputs.tag }}
           severity: HIGH,CRITICAL
