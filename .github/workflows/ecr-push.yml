@@ -55,6 +55,73 @@ jobs:
         working-directory: ${{ matrix.name }}
         run: mvn -B verify
 
+      - name: Upload JaCoCo coverage report
+        if: matrix.kind == 'maven'
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report-${{ matrix.name }}
+          path: ${{ matrix.name }}/target/site/jacoco/
+          retention-days: 30
+
+      - name: Add coverage comment to PR
+        if: matrix.kind == 'maven' && github.event_name == 'pull_request'
+        uses: madrapps/jacoco-report@v1.8.0
+        with:
+          paths: ${{ matrix.name }}/target/site/jacoco/jacoco.xml
+          token: ${{ secrets.GITHUB_TOKEN }}
+          min-coverage-overall: 70
+          min-coverage-changed-files: 70
+          title: 'Code Coverage Report - ${{ matrix.name }}'
+
+      - name: Generate coverage summary
+        if: matrix.kind == 'maven' && always()
+        shell: bash
+        run: |
+          echo "## JaCoCo Coverage Report - ${{ matrix.name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          XML_FILE="${{ matrix.name }}/target/site/jacoco/jacoco.xml"
+          
+          if [ -f "$XML_FILE" ]; then
+            python3 - << 'PYEOF' >> $GITHUB_STEP_SUMMARY
+          import xml.etree.ElementTree as ET
+          
+          try:
+              tree = ET.parse('${{ matrix.name }}/target/site/jacoco/jacoco.xml')
+              root = tree.getroot()
+              
+              for counter in root.findall('./counter'):
+                  counter_type = counter.get('type')
+                  missed = int(counter.get('missed', 0))
+                  covered = int(counter.get('covered', 0))
+                  total = missed + covered
+                  
+                  if total > 0:
+                      percentage = (covered * 100) // total
+                      
+                      if counter_type == 'INSTRUCTION':
+                          print(f"📊 **Instruction Coverage:** {percentage}% ({covered}/{total})")
+                      elif counter_type == 'BRANCH':
+                          print(f"🔀 **Branch Coverage:** {percentage}% ({covered}/{total})")
+                      elif counter_type == 'LINE':
+                          print(f"📝 **Line Coverage:** {percentage}% ({covered}/{total})")
+              
+              print("")
+              print("📁 [Download Full Report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})")
+              
+          except Exception as e:
+              print(f"⚠️ Error parsing coverage: {str(e)}")
+          PYEOF
+          else
+            echo "⚠️ **Coverage report not found**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            if [ -d "${{ matrix.name }}/target/surefire-reports" ]; then
+              echo "Tests ran but coverage not generated - check JaCoCo config" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "Tests did not run - check build logs" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
       - name: Set up Node
         if: matrix.kind == 'node'
         uses: actions/setup-node@v4
