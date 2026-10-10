@@ -4,6 +4,12 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
+### Logs ###
+logs/
+*.log
+*.gz
+
+
 ### Environment Variables ###
 .env
 .env.local
