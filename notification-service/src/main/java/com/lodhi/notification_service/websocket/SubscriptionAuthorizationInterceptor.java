@@ -34,27 +34,38 @@ public class SubscriptionAuthorizationInterceptor implements ChannelInterceptor 
             return message;
         }
 
-        if (StompCommand.SUBSCRIBE.equals(accessor.getCommand())) {
-            String destination = accessor.getDestination();
-            if (destination != null && destination.startsWith(StompDestinations.ADMIN_TOPIC_PREFIX)) {
-                if (!(accessor.getUser() instanceof StompPrincipal principal) || !principal.isAdmin()) {
-                    log.warn("Rejected admin-topic subscription from user={}",
-                            accessor.getUser() != null ? accessor.getUser().getName() : "<anonymous>");
-                    throw new AccessDeniedException("Admin role required to subscribe to " + destination);
-                }
-            }
+        StompCommand command = accessor.getCommand();
+        if (command == null) {
+            return message;
         }
-        else if (StompCommand.SEND.equals(accessor.getCommand())) {
-            String destination = accessor.getDestination();
-            if (destination == null || !destination.startsWith(StompDestinations.APPLICATION_PREFIX + "/")) {
-                throw new AccessDeniedException(
-                        "Client sends are only allowed to " + StompDestinations.APPLICATION_PREFIX + "/** destinations");
-            }
-            if (accessor.getUser() == null) {
-                throw new AccessDeniedException("Authenticated session required to send messages");
-            }
+
+        if (StompCommand.SUBSCRIBE.equals(command)) {
+            validateSubscription(accessor);
+        } else if (StompCommand.SEND.equals(command)) {
+            validateSend(accessor);
         }
 
         return message;
+    }
+
+    private void validateSubscription(StompHeaderAccessor accessor) {
+        String destination = accessor.getDestination();
+        if (destination != null && destination.startsWith(StompDestinations.ADMIN_TOPIC_PREFIX) 
+                && (!(accessor.getUser() instanceof StompPrincipal principal) || !principal.isAdmin())) {
+            log.warn("Rejected admin-topic subscription from user={}",
+                    accessor.getUser() != null ? accessor.getUser().getName() : "<anonymous>");
+            throw new AccessDeniedException("Admin role required to subscribe to " + destination);
+        }
+    }
+
+    private void validateSend(StompHeaderAccessor accessor) {
+        String destination = accessor.getDestination();
+        if (destination == null || !destination.startsWith(StompDestinations.APPLICATION_PREFIX + "/")) {
+            throw new AccessDeniedException(
+                    "Client sends are only allowed to " + StompDestinations.APPLICATION_PREFIX + "/** destinations");
+        }
+        if (accessor.getUser() == null) {
+            throw new AccessDeniedException("Authenticated session required to send messages");
+        }
     }
 }

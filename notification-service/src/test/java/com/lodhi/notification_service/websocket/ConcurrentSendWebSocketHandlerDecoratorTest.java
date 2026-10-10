@@ -43,6 +43,8 @@ class ConcurrentSendWebSocketHandlerDecoratorTest {
 
         @Override
         public void handleTransportError(WebSocketSession session, Throwable exception) {
+            // Empty by design: errors are logged by the ConcurrentWebSocketSessionDecorator
+            // and handling is delegated to the afterConnectionClosed callback
         }
 
         @Override
@@ -85,6 +87,7 @@ class ConcurrentSendWebSocketHandlerDecoratorTest {
         doAnswer(invocation -> {
             maxInFlight.accumulateAndGet(inFlight.incrementAndGet(), Math::max);
             try {
+                // Simulates slow network I/O to test concurrency control
                 Thread.sleep(20);
             } finally {
                 inFlight.decrementAndGet();
@@ -108,6 +111,7 @@ class ConcurrentSendWebSocketHandlerDecoratorTest {
                     start.await();
                     decorated.sendMessage(new TextMessage("msg"));
                 } catch (Exception ignored) {
+                    // Expected in test - exception handling is not under test
                 } finally {
                     done.countDown();
                 }

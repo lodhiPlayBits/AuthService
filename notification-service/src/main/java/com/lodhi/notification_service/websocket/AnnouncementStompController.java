@@ -1,7 +1,6 @@
 package com.lodhi.notification_service.websocket;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.lodhi.notification_service.service.AnnouncementProducer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -91,7 +90,7 @@ public class AnnouncementStompController {
         confirmation.put("type", ack ? "ACK_CONFIRMED" : "DISMISS_CONFIRMED");
         confirmation.put("announcementId", announcementId);
         messagingTemplate.convertAndSendToUser(
-                stompPrincipal.getName(), StompDestinations.CONFIRMATIONS_QUEUE, (Object) confirmation);
+                stompPrincipal.getName(), StompDestinations.CONFIRMATIONS_QUEUE, confirmation);
 
         java.util.Map<String, Object> adminMsg = new java.util.HashMap<>();
         adminMsg.put("type", "USER_RESPONSE");
@@ -113,7 +112,7 @@ public class AnnouncementStompController {
         error.put("type", "ERROR");
         error.put("message", errorMsg);
         messagingTemplate.convertAndSendToUser(
-                stompPrincipal.getName(), StompDestinations.ERRORS_QUEUE, (Object) error);
+                stompPrincipal.getName(), StompDestinations.ERRORS_QUEUE, error);
     }
 
     public record AnnouncementRequest(String title, String message, String priority) {

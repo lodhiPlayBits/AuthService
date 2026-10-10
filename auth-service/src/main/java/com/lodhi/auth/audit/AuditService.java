@@ -2,6 +2,7 @@ package com.lodhi.auth.audit;
 
 import java.time.Instant;
 
+import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -12,11 +13,16 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class AuditService {
 
     private final AuditLogRepository auditLogRepository;
+    private final AuditService self;
+    
+    public AuditService(AuditLogRepository auditLogRepository, @Lazy AuditService self) {
+        this.auditLogRepository = auditLogRepository;
+        this.self = self;
+    }
 
     @Async
     public void logEventAsync(
@@ -64,12 +70,12 @@ public class AuditService {
             HttpServletRequest request
     ) {
         if (request == null) {
-            logEventAsync(userId, username, eventType, success, details, "unknown", "unknown");
+            self.logEventAsync(userId, username, eventType, success, details, "unknown", "unknown");
             return;
         }
         String ipAddress = com.lodhi.auth.utils.LoggingUtils.extractClientIp(request);
         String userAgent = request.getHeader("User-Agent");
-        logEventAsync(userId, username, eventType, success, details, ipAddress, userAgent);
+        self.logEventAsync(userId, username, eventType, success, details, ipAddress, userAgent);
     }
 
     public void logLoginSuccess(Long userId, String username, HttpServletRequest request) {

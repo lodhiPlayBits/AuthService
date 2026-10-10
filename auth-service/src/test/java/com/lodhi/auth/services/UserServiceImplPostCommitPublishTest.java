@@ -36,8 +36,9 @@ class UserServiceImplPostCommitPublishTest {
 
     @BeforeEach
     void setUp() {
+        // Pass userService itself as the 'self' parameter for proxy injection
         userService = new UserServiceImpl(userRepository, modelMapper, roleService,
-                passwordEncoder, bcryptService, refreshTokenRepository, accountEventProducer);
+                passwordEncoder, bcryptService, refreshTokenRepository, accountEventProducer, null);
         User user = new User();
         user.setEmail("user@example.com");
         user.setEnabled(true);

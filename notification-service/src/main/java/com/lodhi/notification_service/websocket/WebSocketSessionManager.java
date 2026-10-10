@@ -50,7 +50,7 @@ public class WebSocketSessionManager {
         List<WebSocketSession> sessions = userSessions.remove(userId);
         if (sessions != null) {
             for (WebSocketSession session : sessions) {
-                closeSessionQuietly(session, "User session revoked");
+                closeSessionQuietly(session);
                 allSessions.remove(session.getId());
             }
             log.info("Closed {} STOMP session(s) for userId={}", sessions.size(), userId);
@@ -63,13 +63,12 @@ public class WebSocketSessionManager {
         int closedCount = 0;
         
         for (WebSocketSession session : allSessions.values()) {
-            if (session.getPrincipal() instanceof StompPrincipal principal) {
-                if (principal.expiresAt() != null && now.isAfter(principal.expiresAt())) {
-                    log.info("Closing STOMP session {} for userId={} because JWT token expired", session.getId(), principal.userId());
-                    closeSessionQuietly(session, "JWT token expired");
-                    // Removal from maps is handled by afterConnectionClosed in decorator
-                    closedCount++;
-                }
+            if (session.getPrincipal() instanceof StompPrincipal principal 
+                    && principal.expiresAt() != null && now.isAfter(principal.expiresAt())) {
+                log.info("Closing STOMP session {} for userId={} because JWT token expired", session.getId(), principal.userId());
+                closeSessionQuietly(session);
+                // Removal from maps is handled by afterConnectionClosed in decorator
+                closedCount++;
             }
         }
         
@@ -78,7 +77,7 @@ public class WebSocketSessionManager {
         }
     }
 
-    private void closeSessionQuietly(WebSocketSession session, String reason) {
+    private void closeSessionQuietly(WebSocketSession session) {
         try {
             session.close();
         } catch (Exception e) {

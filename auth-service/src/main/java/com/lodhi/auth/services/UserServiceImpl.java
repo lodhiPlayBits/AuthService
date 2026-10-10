@@ -4,6 +4,7 @@ import java.util.Locale;
 import java.util.Set;
 
 import org.modelmapper.ModelMapper;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -32,7 +33,6 @@ import com.lodhi.auth.respositories.RefreshTokenRepository;
 import lombok.RequiredArgsConstructor;
 
 @Service
-@RequiredArgsConstructor
 public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
@@ -42,6 +42,26 @@ public class UserServiceImpl implements UserService {
     private final BCryptService bcryptService;
     private final RefreshTokenRepository refreshTokenRepository;
     private final AccountEventProducer accountEventProducer;
+    private final UserServiceImpl self;
+    
+    public UserServiceImpl(
+            UserRepository userRepository,
+            ModelMapper modelMapper,
+            RoleServiceImpl roleService,
+            PasswordEncoder passwordEncoder,
+            BCryptService bcryptService,
+            RefreshTokenRepository refreshTokenRepository,
+            AccountEventProducer accountEventProducer,
+            @Lazy UserServiceImpl self) {
+        this.userRepository = userRepository;
+        this.modelMapper = modelMapper;
+        this.roleService = roleService;
+        this.passwordEncoder = passwordEncoder;
+        this.bcryptService = bcryptService;
+        this.refreshTokenRepository = refreshTokenRepository;
+        this.accountEventProducer = accountEventProducer;
+        this.self = self;
+    }
 
     @Override
     public CreateUserResponseDTO createUser(CreateUserRequestDTO createUserRequestDTO) {
@@ -196,10 +216,7 @@ public class UserServiceImpl implements UserService {
         }
         
         // Save using separate transactional method
-        saveNewPassword(userId, passwordEncoder.encode(requestDTO.getNewPassword()));
-        
-        // TODO: Add audit logging when AuditService is available
-        // auditService.logServiceEvent(userId, username, AuditEventType.PASSWORD_CHANGED, true, "Password changed");
+        self.saveNewPassword(userId, passwordEncoder.encode(requestDTO.getNewPassword()));
     }
 
     @Transactional

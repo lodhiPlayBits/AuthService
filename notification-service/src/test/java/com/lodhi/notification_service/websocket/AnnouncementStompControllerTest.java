@@ -19,7 +19,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.lodhi.notification_service.service.AnnouncementProducer;
 import com.lodhi.notification_service.websocket.AnnouncementStompController.AnnouncementActionRequest;
 import com.lodhi.notification_service.websocket.AnnouncementStompController.AnnouncementRequest;
