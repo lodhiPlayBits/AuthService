@@ -47,9 +47,11 @@ public class JwtService {
         this.issuer = issuer;
         this.audience = audience;
 
-        this.secretKey = Keys.hmacShaKeyFor(
-                secret.getBytes(StandardCharsets.UTF_8)
-        );
+        byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
+        if (keyBytes.length < 64) {
+            throw new IllegalArgumentException("JWT secret must be at least 64 bytes (512 bits) for HS512 algorithm");
+        }
+        this.secretKey = Keys.hmacShaKeyFor(keyBytes);
     }
 
     public String generateAccessToken(User user) {
@@ -80,7 +82,7 @@ public class JwtService {
                 .claim("roles", roles)
                 .claim("permissions", permissions)
                 .claim("type", "access")
-                .signWith(secretKey)
+                .signWith(secretKey, io.jsonwebtoken.SignatureAlgorithm.HS512)
                 .compact();
     }
 
@@ -96,7 +98,7 @@ public class JwtService {
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusSeconds(refreshTtlSeconds)))
                 .claim("type", "refresh")
-                .signWith(secretKey)
+                .signWith(secretKey, io.jsonwebtoken.SignatureAlgorithm.HS512)
                 .compact();
     }
 

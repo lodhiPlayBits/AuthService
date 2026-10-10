@@ -1,0 +1,131 @@
+.toast-container {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  z-index: 100;
+  max-width: 400px;
+  width: calc(100vw - 4rem);
+  transform: translateY(20px) scale(0.95);
+  opacity: 0;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  pointer-events: none;
+}
+
+.toast-container.show {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.toast-card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.05) inset;
+  display: flex;
+  padding: 1.25rem;
+  gap: 1rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.toast-icon-wrapper {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.toast-content {
+  flex: 1;
+}
+
+.toast-title {
+  font-family: 'Outfit', sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+  color: var(--text-primary);
+}
+
+.toast-message {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.toast-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.btn-sm {
+  padding: 0.5rem 1rem;
+  font-size: 0.75rem;
+  border-radius: 8px;
+}
+
+.toast-close {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.25rem;
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.toast-close:hover {
+  background: rgba(255,255,255,0.1);
+  color: var(--text-primary);
+}
+
+.toast-progress-track {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.toast-progress-bar {
+  height: 100%;
+  background: currentColor;
+  transition: width 0.1s linear;
+}
+
+/* Accent Colors */
+.toast-accent { border-top: 2px solid var(--accent-primary); }
+.toast-accent .toast-icon-wrapper { color: var(--accent-primary); background: rgba(129, 140, 248, 0.1); }
+.toast-accent .toast-progress-bar { background: var(--accent-primary); }
+
+.toast-error { border-top: 2px solid var(--danger); }
+.toast-error .toast-icon-wrapper { color: var(--danger); background: rgba(239, 68, 68, 0.1); }
+.toast-error .toast-progress-bar { background: var(--danger); }
+
+.toast-success { border-top: 2px solid var(--success); }
+.toast-success .toast-icon-wrapper { color: var(--success); background: rgba(16, 185, 129, 0.1); }
+.toast-success .toast-progress-bar { background: var(--success); }
+
+.toast-info { border-top: 2px solid var(--accent-tertiary); }
+.toast-info .toast-icon-wrapper { color: var(--accent-tertiary); background: rgba(34, 211, 238, 0.1); }
+.toast-info .toast-progress-bar { background: var(--accent-tertiary); }
+
+@media (max-width: 480px) {
+  .toast-container {
+    bottom: 1rem;
+    right: 1rem;
+    width: calc(100vw - 2rem);
+  }
+}

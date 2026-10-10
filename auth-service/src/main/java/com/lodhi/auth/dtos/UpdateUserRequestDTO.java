@@ -11,12 +11,10 @@ import lombok.Data;
  */
 @Data
 public class UpdateUserRequestDTO {
+    private String username;
     private String name;
     private Gender gender;
     private String image;
-    
-    // Security note: password, email, phoneNumber explicitly excluded
-    // - Password changes: Use dedicated password change endpoint
-    // - Email changes: Requires verification flow
-    // - Phone changes: May require verification flow
+    private String email;
+    private String phoneNumber;
 }

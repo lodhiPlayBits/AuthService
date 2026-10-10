@@ -12,6 +12,12 @@ spring:
 
   application:
     name: Auth-app
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:19092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
   
   # Graceful shutdown configuration
   lifecycle:
@@ -89,6 +95,17 @@ spring:
       key-prefix: "auth:"
 
 # =====================================================
+# Kafka Topic Configuration
+# =====================================================
+kafka:
+  topics:
+    # Replication factor for KafkaAdmin-managed topics (account-events and
+    # its .DLT; broadcast-announcements is managed by notification-service).
+    # Must not exceed the broker count — 2 for the local KRaft cluster. Topic
+    # creation fails with INVALID_REPLICATION_FACTOR otherwise.
+    replication-factor: ${KAFKA_TOPIC_REPLICATION_FACTOR:2}
+
+# =====================================================
 # Server Configuration
 # =====================================================
 server:
@@ -111,24 +128,36 @@ admin:
   phoneNumber: ${ADMIN_PHONE:8595007855}
 
 # =====================================================
+# Authentication Configuration
+# =====================================================
+auth:
+  # BCrypt concurrency control
+  bcrypt:
+    # Maximum concurrent BCrypt password checks
+    # Prevents CPU overload during high authentication load
+    # t3.large (2 vCPUs): Use 4-6 concurrent BCrypt operations
+    # Each BCrypt takes ~100-300ms CPU time
+    # Formula: (vCPUs × 2) to (vCPUs × 3)
+    max-concurrent: ${BCRYPT_MAX_CONCURRENT:6}
+
+# =====================================================
 # Logging Configuration
 # =====================================================
 logging:
   level:
     root: ${LOG_LEVEL_ROOT:INFO}
     com.lodhi.auth: ${LOG_LEVEL_APP:INFO}
-    com.lodhi.auth.security: ${LOG_LEVEL_SECURITY:DEBUG}
+    com.lodhi.auth.security: ${LOG_LEVEL_SECURITY:INFO}
     com.lodhi.auth.audit: ${LOG_LEVEL_AUDIT:INFO}
     org.springframework.security: ${LOG_LEVEL_SPRING_SECURITY:WARN}
     org.springframework.web: ${LOG_LEVEL_SPRING_WEB:WARN}
     org.hibernate: ${LOG_LEVEL_HIBERNATE:WARN}
-    org.hibernate.SQL: ${LOG_LEVEL_HIBERNATE_SQL:DEBUG}
     org.flywaydb: ${LOG_LEVEL_FLYWAY:INFO}
     com.zaxxer.hikari: ${LOG_LEVEL_HIKARI:INFO}
   pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{requestId}] %-5level %logger{36} - %msg%n"
   file:
-    name: ${LOG_FILE:/var/log/auth-service/auth-service.log}
+    name: ${LOG_FILE:${LOG_PATH:-${java.io.tmpdir:-/tmp}}/auth-service.log}
 
 # =====================================================
 # Actuator Configuration

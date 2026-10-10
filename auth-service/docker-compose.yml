@@ -93,17 +93,33 @@ services:
       REDIS_POOL_MAX_WAIT: ${REDIS_POOL_MAX_WAIT:--1ms}
       REDIS_SHUTDOWN_TIMEOUT: ${REDIS_SHUTDOWN_TIMEOUT:-100ms}
       CACHE_TTL: ${CACHE_TTL:-3600000}
+
+      # BCrypt Configuration
+      BCRYPT_MAX_CONCURRENT: ${BCRYPT_MAX_CONCURRENT:-3}
+
+      # Kafka Configuration
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka-node-1:19092,kafka-node-2:19092}
+      KAFKA_TOPIC_REPLICATION_FACTOR: ${KAFKA_TOPIC_REPLICATION_FACTOR:-2}
     # Direct port access — uncomment for local dev without nginx
     # ports:
-    #   - "8080:8080"
+    #   - "5001:5001"
     expose:
-      - "8080"
+      - "5001"
     volumes:
       - ./logs:/var/log/auth-service
     networks:
       - authnet
+      - kafka-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'      # 100% of 2 vCPUs (nginx/redis only use ~3%)
+          memory: 4G       # 4GB (50% of total RAM)
+        reservations:
+          cpus: '1.0'      # Minimum 1 vCPU
+          memory: 2G       # Minimum 2GB
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:5001/actuator/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -111,5 +127,8 @@ services:
 
 networks:
   authnet:
+    external: true
+  kafka-network:
+    name: authvolt-kafka-network
     external: true
 

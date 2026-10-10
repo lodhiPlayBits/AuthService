@@ -29,6 +29,7 @@ import com.lodhi.auth.security.TokenHashService;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.impl.DefaultClaims;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 @ExtendWith(MockitoExtension.class)
@@ -54,6 +55,12 @@ class RefreshTokenServiceTest {
 
     @Mock
     private TokenHashService tokenHashService;
+    
+    @Mock
+    private com.lodhi.auth.audit.AuditService auditService;
+    
+    @Mock
+    private HttpServletRequest request;
 
     @Mock
     private HttpServletResponse response;
@@ -112,7 +119,7 @@ class RefreshTokenServiceTest {
         
         lenient().when(mapper.map(user, CreateUserResponseDTO.class)).thenReturn(new CreateUserResponseDTO());
 
-        TokenResponse result = refreshTokenService.rotate(oldTokenStr, response);
+        TokenResponse result = refreshTokenService.rotate(oldTokenStr, request, response);
 
         assertNotNull(result);
         assertEquals("new-access-token", result.accessToken());
@@ -130,7 +137,7 @@ class RefreshTokenServiceTest {
         when(jwtService.parseToken(oldTokenStr)).thenReturn(jws);
         when(jwtService.isRefreshToken(claims)).thenReturn(false);
 
-        assertThrows(BadCredentialsException.class, () -> refreshTokenService.rotate(oldTokenStr, response));
+        assertThrows(BadCredentialsException.class, () -> refreshTokenService.rotate(oldTokenStr, request, response));
     }
 
     @Test
@@ -145,7 +152,7 @@ class RefreshTokenServiceTest {
         // Return 0 indicating it was not active (already revoked or consumed)
         lenient().when(refreshTokenRepository.revokeIfActive(eq("old-jti-hash"), any(String.class), any(Instant.class))).thenReturn(0);
 
-        BadCredentialsException ex = assertThrows(BadCredentialsException.class, () -> refreshTokenService.rotate(oldTokenStr, response));
+        BadCredentialsException ex = assertThrows(BadCredentialsException.class, () -> refreshTokenService.rotate(oldTokenStr, request, response));
         assertEquals("Refresh token has been revoked", ex.getMessage());
         
         // Ensure the entire family gets revoked
@@ -170,8 +177,8 @@ class RefreshTokenServiceTest {
 
         lenient().when(refreshTokenRepository.findByJtiHash("old-jti-hash")).thenReturn(Optional.of(otherUserToken));
 
-        BadCredentialsException ex = assertThrows(BadCredentialsException.class, () -> refreshTokenService.rotate(oldTokenStr, response));
-        assertEquals("Invalid refresh token", ex.getMessage());
+        BadCredentialsException ex = assertThrows(BadCredentialsException.class, () -> refreshTokenService.rotate(oldTokenStr, request, response));
+        assertEquals("Invalid refresh token - user mismatch", ex.getMessage());
     }
 
     @Test
@@ -186,7 +193,7 @@ class RefreshTokenServiceTest {
         refreshTokenEntity.setExpiresAt(Instant.now().minusSeconds(10));
         lenient().when(refreshTokenRepository.findByJtiHash("old-jti-hash")).thenReturn(Optional.of(refreshTokenEntity));
 
-        BadCredentialsException ex = assertThrows(BadCredentialsException.class, () -> refreshTokenService.rotate(oldTokenStr, response));
+        BadCredentialsException ex = assertThrows(BadCredentialsException.class, () -> refreshTokenService.rotate(oldTokenStr, request, response));
         assertEquals("Refresh token has expired", ex.getMessage());
         
         verify(refreshTokenFamilyService).revokeFamily("family-id");
@@ -205,7 +212,7 @@ class RefreshTokenServiceTest {
         user.setEnabled(false);
         lenient().when(userRepository.findByIdWithRolesAndPermissions(1L)).thenReturn(Optional.of(user));
 
-        BadCredentialsException ex = assertThrows(BadCredentialsException.class, () -> refreshTokenService.rotate(oldTokenStr, response));
+        BadCredentialsException ex = assertThrows(BadCredentialsException.class, () -> refreshTokenService.rotate(oldTokenStr, request, response));
         assertEquals("Account is disabled", ex.getMessage());
         verify(refreshTokenFamilyService).revokeFamily("family-id");
     }
@@ -229,7 +236,7 @@ class RefreshTokenServiceTest {
         // Let the first user pass check
         refreshTokenEntity.setUser(lockedUser);
 
-        BadCredentialsException ex = assertThrows(BadCredentialsException.class, () -> refreshTokenService.rotate(oldTokenStr, response));
+        BadCredentialsException ex = assertThrows(BadCredentialsException.class, () -> refreshTokenService.rotate(oldTokenStr, request, response));
         assertEquals("Account is locked", ex.getMessage());
         verify(refreshTokenFamilyService).revokeFamily("family-id");
     }
@@ -253,7 +260,7 @@ class RefreshTokenServiceTest {
 
         refreshTokenEntity.setUser(expiredUser);
 
-        BadCredentialsException ex = assertThrows(BadCredentialsException.class, () -> refreshTokenService.rotate(oldTokenStr, response));
+        BadCredentialsException ex = assertThrows(BadCredentialsException.class, () -> refreshTokenService.rotate(oldTokenStr, request, response));
         assertEquals("Credentials have expired", ex.getMessage());
         verify(refreshTokenFamilyService).revokeFamily("family-id");
     }

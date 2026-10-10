@@ -27,6 +27,8 @@ public class CreateUserResponseDTO {
 
     private String email;
 
+    private String username;
+
     private String name;
 
     private Gender gender;

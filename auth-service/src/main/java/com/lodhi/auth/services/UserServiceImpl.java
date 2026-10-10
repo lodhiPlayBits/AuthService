@@ -4,6 +4,7 @@ import java.util.Locale;
 import java.util.Set;
 
 import org.modelmapper.ModelMapper;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -12,6 +13,8 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.lodhi.auth.constants.SystemRoles;
 import com.lodhi.auth.dtos.ChangePasswordRequestDTO;
@@ -30,14 +33,35 @@ import com.lodhi.auth.respositories.RefreshTokenRepository;
 import lombok.RequiredArgsConstructor;
 
 @Service
-@RequiredArgsConstructor
 public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
     private final ModelMapper modelMapper;
     private final RoleServiceImpl roleService;  // impl for getRoleEntityByName()
     private final PasswordEncoder passwordEncoder;
+    private final BCryptService bcryptService;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final AccountEventProducer accountEventProducer;
+    private final UserServiceImpl self;
+    
+    public UserServiceImpl(
+            UserRepository userRepository,
+            ModelMapper modelMapper,
+            RoleServiceImpl roleService,
+            PasswordEncoder passwordEncoder,
+            BCryptService bcryptService,
+            RefreshTokenRepository refreshTokenRepository,
+            AccountEventProducer accountEventProducer,
+            @Lazy UserServiceImpl self) {
+        this.userRepository = userRepository;
+        this.modelMapper = modelMapper;
+        this.roleService = roleService;
+        this.passwordEncoder = passwordEncoder;
+        this.bcryptService = bcryptService;
+        this.refreshTokenRepository = refreshTokenRepository;
+        this.accountEventProducer = accountEventProducer;
+        this.self = self;
+    }
 
     @Override
     public CreateUserResponseDTO createUser(CreateUserRequestDTO createUserRequestDTO) {
@@ -130,9 +154,24 @@ public class UserServiceImpl implements UserService {
             user.setImage(updateUserRequestDTO.getImage());
         }
         
-        // Security-sensitive fields (password, email, phoneNumber) 
-        // are NOT touched by this method
-        
+        if (updateUserRequestDTO.getUsername() != null && !updateUserRequestDTO.getUsername().equals(user.getUsername())) {
+            if (userRepository.existsByUsername(updateUserRequestDTO.getUsername())) {
+                throw new ValidationException("Username is already taken");
+            }
+            user.setUsername(updateUserRequestDTO.getUsername());
+        }
+        if (updateUserRequestDTO.getEmail() != null && !updateUserRequestDTO.getEmail().equals(user.getEmail())) {
+            if (userRepository.existsByEmail(updateUserRequestDTO.getEmail())) {
+                throw new ValidationException("Email is already registered");
+            }
+            user.setEmail(updateUserRequestDTO.getEmail());
+        }
+        if (updateUserRequestDTO.getPhoneNumber() != null && !updateUserRequestDTO.getPhoneNumber().equals(user.getPhoneNumber())) {
+            if (userRepository.existsByPhoneNumber(updateUserRequestDTO.getPhoneNumber())) {
+                throw new ValidationException("Phone number is already in use");
+            }
+            user.setPhoneNumber(updateUserRequestDTO.getPhoneNumber());
+        }
         User updatedUser = userRepository.save(user);
 
         return modelMapper.map(updatedUser, CreateUserResponseDTO.class);
@@ -148,7 +187,6 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    @Transactional
     public void changePassword(Long userId, ChangePasswordRequestDTO requestDTO) {
         // Load user
         User user = userRepository.findById(userId)
@@ -167,28 +205,31 @@ public class UserServiceImpl implements UserService {
             throw new ValidationException("New password and confirmation do not match");
         }
         
-        // Verify current password
-        if (!passwordEncoder.matches(requestDTO.getCurrentPassword(), user.getPassword())) {
+        // Verify current password via bounded queue
+        if (!bcryptService.matches(requestDTO.getCurrentPassword(), user.getPassword())) {
             throw new ValidationException("Current password is incorrect");
         }
         
         // Prevent reusing the same password
-        if (passwordEncoder.matches(requestDTO.getNewPassword(), user.getPassword())) {
+        if (bcryptService.matches(requestDTO.getNewPassword(), user.getPassword())) {
             throw new ValidationException("New password must be different from current password");
         }
         
-        // Encode and set new password
-        user.setPassword(passwordEncoder.encode(requestDTO.getNewPassword()));
+        // Save using separate transactional method
+        self.saveNewPassword(userId, passwordEncoder.encode(requestDTO.getNewPassword()));
+    }
+
+    @Transactional
+    protected void saveNewPassword(Long userId, String encodedPassword) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", userId));
+        user.setPassword(encodedPassword);
         userRepository.save(user);
-        
-        // Revoke all existing sessions on password change (Security best practice)
-        int tokensRevoked = refreshTokenRepository.revokeAllForUser(userId);
-        
-        // TODO: Add audit logging when AuditService is available
-        // auditService.logServiceEvent(userId, username, AuditEventType.PASSWORD_CHANGED, true, "Password changed");
+        refreshTokenRepository.revokeAllForUser(userId);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Page<CreateUserResponseDTO> getAllUsers(Pageable pageable) {
         // Enforce maximum page size to prevent unbounded queries
         int maxPageSize = 100;
@@ -240,6 +281,36 @@ public class UserServiceImpl implements UserService {
         // If account is disabled, revoke all existing sessions immediately
         if (!enabled) {
             refreshTokenRepository.revokeAllForUser(userId);
+        }
+
+        // Defer until commit — a rolled-back status change must not emit
+        // events that force clients to log out for nothing
+        String email = user.getEmail();
+        afterCommit(() -> {
+            if (!enabled) {
+                accountEventProducer.publishAccountDisabled(
+                    userId,
+                    email,
+                    "Your account has been disabled by an administrator. Please contact support."
+                );
+            } else {
+                accountEventProducer.publishAccountEnabled(userId, email);
+            }
+        });
+    }
+
+    private void afterCommit(Runnable action) {
+        // registerSynchronization() throws when no transaction is active;
+        // direct callers (e.g. unit tests) fall back to immediate execution
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    action.run();
+                }
+            });
+        } else {
+            action.run();
         }
     }
 }

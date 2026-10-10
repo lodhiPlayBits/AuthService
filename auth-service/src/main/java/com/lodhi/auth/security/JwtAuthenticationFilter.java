@@ -34,6 +34,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             "/api/v1/auth/login",
             "/api/v1/auth/register",
             "/api/v1/auth/refresh",
+            "/api/v1/auth/logout",
             "/api/v1/auth/oauth2/google"
     );
 
@@ -47,20 +48,26 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             FilterChain filterChain
     ) throws ServletException, IOException {
 
+        String token = null;
         String header = request.getHeader("Authorization");
 
-        if (header == null || !header.startsWith("Bearer ")) {
+        // First, try to get token from Authorization header
+        if (header != null && header.startsWith("Bearer ")) {
+            token = header.substring(7);
+        }
+
+        // If no token found, continue without authentication
+        if (token == null) {
             filterChain.doFilter(request, response);
             return;
         }
-
-        String token = header.substring(7);
 
         try {
             Jws<Claims> parsed = jwtService.parseToken(token);
             Claims claims = parsed.getPayload();
 
-            // Check token type
+            // Only access tokens authenticate requests — refresh tokens are
+            // refused everywhere
             if (!jwtService.isAccessToken(claims)) {
                 log.debug("Token is not an access token");
                 filterChain.doFilter(request, response);
@@ -69,7 +76,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
             // Check expiration explicitly
             if (claims.getExpiration().before(new Date())) {
-                log.debug("Access token has expired");
+                log.debug("JWT token has expired");
                 filterChain.doFilter(request, response);
                 return;
             }

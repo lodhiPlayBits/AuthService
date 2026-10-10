@@ -53,6 +53,7 @@ class AuthServiceImplTest {
     @Mock private AuditService auditService;
     @Mock private TokenHashService tokenHashService;
     @Mock private RefreshTokenFamilyService refreshTokenFamilyService;
+    @Mock private AccountEventProducer accountEventProducer;
 
     @Mock private HttpServletRequest request;
     @Mock private HttpServletResponse response;
@@ -103,7 +104,7 @@ class AuthServiceImplTest {
 
         assertNotNull(res);
         assertEquals("accessToken", res.getAccessToken());
-        verify(refreshTokenRepository).save(any(RefreshToken.class));
+        verify(refreshTokenRepository).saveAndFlush(any(RefreshToken.class));
         verify(cookieService).attachRefreshCookie(response, "refreshToken", 3600);
         verify(auditService).logLoginSuccess(user.getId(), user.getEmail(), request);
     }

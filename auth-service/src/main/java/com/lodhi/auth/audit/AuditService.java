@@ -2,6 +2,7 @@ package com.lodhi.auth.audit;
 
 import java.time.Instant;
 
+import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -12,13 +13,54 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class AuditService {
 
     private final AuditLogRepository auditLogRepository;
+    private final AuditService self;
+    
+    public AuditService(AuditLogRepository auditLogRepository, @Lazy AuditService self) {
+        this.auditLogRepository = auditLogRepository;
+        this.self = self;
+    }
 
     @Async
+    public void logEventAsync(
+            Long userId,
+            String username,
+            AuditEventType eventType,
+            boolean success,
+            String details,
+            String ipAddress,
+            String userAgent
+    ) {
+        try {
+            String dbUsername = username;
+            if (!success && eventType == AuditEventType.LOGIN_FAILURE) {
+                dbUsername = com.lodhi.auth.utils.LoggingUtils.maskIdentifier(username);
+            }
+
+            AuditLog auditLog = AuditLog.builder()
+                    .userId(userId)
+                    .username(dbUsername)
+                    .eventType(eventType)
+                    .success(success)
+                    .details(details)
+                    .ipAddress(ipAddress)
+                    .userAgent(userAgent)
+                    .timestamp(Instant.now())
+                    .build();
+
+            auditLogRepository.save(auditLog);
+            
+            log.info("Audit logged: user={}, event={}, success={}, ip={}", 
+                com.lodhi.auth.utils.LoggingUtils.maskIdentifier(username), eventType, success, auditLog.getIpAddress());
+                
+        } catch (Exception e) {
+            log.error("Failed to save audit log", e);
+        }
+    }
+
     public void logEvent(
             Long userId,
             String username,
@@ -27,47 +69,40 @@ public class AuditService {
             String details,
             HttpServletRequest request
     ) {
-        try {
-            AuditLog auditLog = AuditLog.builder()
-                    .userId(userId)
-                    .username(username)
-                    .eventType(eventType)
-                    .success(success)
-                    .details(details)
-                    .ipAddress(extractIpAddress(request))
-                    .userAgent(request.getHeader("User-Agent"))
-                    .timestamp(Instant.now())
-                    .build();
-
-            auditLogRepository.save(auditLog);
-            
-            log.info("Audit logged: user={}, event={}, success={}, ip={}", 
-                username, eventType, success, auditLog.getIpAddress());
-                
-        } catch (Exception e) {
-            log.error("Failed to save audit log", e);
+        if (request == null) {
+            self.logEventAsync(userId, username, eventType, success, details, "unknown", "unknown");
+            return;
         }
+        String ipAddress = com.lodhi.auth.utils.LoggingUtils.extractClientIp(request);
+        String userAgent = request.getHeader("User-Agent");
+        self.logEventAsync(userId, username, eventType, success, details, ipAddress, userAgent);
     }
 
-    @Async
     public void logLoginSuccess(Long userId, String username, HttpServletRequest request) {
         logEvent(userId, username, AuditEventType.LOGIN_SUCCESS, true, 
                 "User logged in successfully", request);
     }
 
-    @Async
     public void logLoginFailure(String identifier, String reason, HttpServletRequest request) {
         logEvent(null, identifier, AuditEventType.LOGIN_FAILURE, false, 
                 "Login failed: " + reason, request);
     }
 
-    @Async
     public void logTokenRefresh(Long userId, String username, HttpServletRequest request) {
         logEvent(userId, username, AuditEventType.TOKEN_REFRESH, true, 
                 "Token refreshed", request);
     }
+    
+    public void logTokenRefreshFailure(String identifier, String reason, HttpServletRequest request) {
+        logEvent(null, identifier, AuditEventType.TOKEN_REFRESH, false, 
+                "Token refresh failed: " + reason, request);
+    }
 
-    @Async
+    public void logTokenReuse(Long userId, String identifier, HttpServletRequest request) {
+        logEvent(userId, identifier, AuditEventType.TOKEN_REUSE, false, 
+                "Token reuse detected", request);
+    }
+
     public void logLogout(Long userId, String username, HttpServletRequest request) {
         logEvent(userId, username, AuditEventType.LOGOUT, true, 
                 "User logged out", request);
@@ -100,24 +135,10 @@ public class AuditService {
             auditLogRepository.save(auditLog);
             
             log.info("Audit logged (service): user={}, event={}, success={}", 
-                username, eventType, success);
+                com.lodhi.auth.utils.LoggingUtils.maskIdentifier(username), eventType, success);
                 
         } catch (Exception e) {
             log.error("Failed to save audit log", e);
         }
-    }
-
-    private String extractIpAddress(HttpServletRequest request) {
-        String xForwardedFor = request.getHeader("X-Forwarded-For");
-        if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
-            return xForwardedFor.split(",")[0].trim();
-        }
-        
-        String xRealIp = request.getHeader("X-Real-IP");
-        if (xRealIp != null && !xRealIp.isEmpty()) {
-            return xRealIp;
-        }
-        
-        return request.getRemoteAddr();
     }
 }

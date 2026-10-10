@@ -44,6 +44,7 @@ public class AuthServiceImpl implements AuthService {
     private final com.lodhi.auth.security.TokenHashService tokenHashService;
     private final RefreshTokenFamilyService refreshTokenFamilyService;
     private final TokenBlacklistService tokenBlacklistService;
+    private final AccountEventProducer accountEventProducer;
 
     @Override
     public CreateUserResponseDTO registeruser(CreateUserRequestDTO createUserRequestDTO) {
@@ -83,8 +84,8 @@ public class AuthServiceImpl implements AuthService {
                     .revoked(false)
                     .build();
             
-            refreshTokenRepository.save(refreshTokenEntity);
-            
+            refreshTokenRepository.saveAndFlush(refreshTokenEntity);
+
             // Generate JWT tokens
             String accessToken = jwtService.generateAccessToken(user);
             String refreshToken = jwtService.generateRefreshToken(user, jti);
@@ -141,6 +142,7 @@ public class AuthServiceImpl implements AuthService {
             // Log successful logout
             User user = storedToken.getUser();
             auditService.logLogout(userId, user.getEmail(), request);
+            accountEventProducer.publishSessionRevoked(userId, user.getEmail());
             
         } catch (Exception e) {
             // Even if token is invalid, still clear the cookie
@@ -167,6 +169,7 @@ public class AuthServiceImpl implements AuthService {
 
         // Log logout from all devices
         auditService.logLogout(userId, user.getEmail(), request);
+        accountEventProducer.publishSessionRevoked(userId, user.getEmail());
 
         // Log for monitoring
         org.slf4j.LoggerFactory.getLogger(AuthServiceImpl.class)

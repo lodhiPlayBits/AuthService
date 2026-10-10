@@ -3,62 +3,85 @@
     <!-- Import Spring Boot defaults -->
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
     
+    <!-- Fallback properties before Spring Environment resolution -->
+    <property name="spring.profiles.active" value="default"/>
+    <property name="activeProfile" value="default"/>
+    <property name="appName" value="auth-service"/>
+
+    <!-- Spring Property resolution for Logback -->
+    <springProperty scope="context" name="spring.profiles.active" source="spring.profiles.active" defaultValue="default"/>
+    <springProperty scope="context" name="activeProfile" source="spring.profiles.active" defaultValue="default"/>
+    <springProperty scope="context" name="appName" source="spring.application.name" defaultValue="auth-service"/>
+
     <!-- Properties for log file locations -->
     <property name="LOG_FILE" value="${LOG_FILE:-${LOG_PATH:-${LOG_TEMP:-${java.io.tmpdir:-/tmp}}}/auth-service.log}"/>
-    <property name="LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"/>
+    <property name="LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{requestId}] %-5level %logger{36} - %msg%n"/>
     
-    <!-- Console Appender for Development (Human-readable) -->
-    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-        <encoder>
-            <pattern>${LOG_PATTERN}</pattern>
-            <charset>UTF-8</charset>
+    <!-- File Appender with JSON format and rotation (Shared across profiles) -->
+    <appender name="JSON_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_FILE}</file>
+        
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <!-- Rollover daily -->
+            <fileNamePattern>${LOG_FILE}.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
+            <!-- Each file should be at most 100MB -->
+            <maxFileSize>100MB</maxFileSize>
+            <!-- Keep 30 days worth of history -->
+            <maxHistory>30</maxHistory>
+            <!-- Total size of all archive files -->
+            <totalSizeCap>5GB</totalSizeCap>
+        </rollingPolicy>
+        
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <customFields>{"service":"${appName:-auth-service}","environment":"${spring.profiles.active:-default}"}</customFields>
+            <includeMdc>true</includeMdc>
+            <includeContext>true</includeContext>
+            <includeCallerData>false</includeCallerData>
+            <includeStackTrace>true</includeStackTrace>
+            <shortenedLoggerNameLength>36</shortenedLoggerNameLength>
         </encoder>
     </appender>
-    
-    <!-- Default configuration (always active) -->
-    <root level="INFO">
-        <appender-ref ref="CONSOLE"/>
-    </root>
-        <!-- Console Appender with JSON format -->
+
+    <!-- Async JSON File Appender (Shared across profiles) -->
+    <appender name="ASYNC_JSON_FILE" class="ch.qos.logback.classic.AsyncAppender">
+        <appender-ref ref="JSON_FILE"/>
+        <queueSize>1024</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <neverBlock>true</neverBlock>
+        <includeCallerData>false</includeCallerData>
+        <maxFlushTime>1000</maxFlushTime>
+    </appender>
+
+    <!-- Non-Production Profiles (default, dev, test): Human-readable Console + JSON File -->
+    <springProfile name="!prod">
+        <!-- Console Appender for Development (Human-readable with MDC requestId) -->
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>${LOG_PATTERN}</pattern>
+                <charset>UTF-8</charset>
+            </encoder>
+        </appender>
+
+        <appender name="ASYNC_CONSOLE" class="ch.qos.logback.classic.AsyncAppender">
+            <appender-ref ref="CONSOLE"/>
+            <queueSize>1024</queueSize>
+            <discardingThreshold>0</discardingThreshold>
+            <neverBlock>true</neverBlock>
+            <includeCallerData>false</includeCallerData>
+            <maxFlushTime>1000</maxFlushTime>
+        </appender>
+
+        <root level="INFO">
+            <appender-ref ref="ASYNC_CONSOLE"/>
+            <appender-ref ref="ASYNC_JSON_FILE"/>
+        </root>
+    </springProfile>
+
+    <!-- Production Profile: JSON Console + JSON File -->
+    <springProfile name="prod">
         <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <encoder class="net.logstash.logback.encoder.LogstashEncoder">
-                <!-- Custom fields added to every log -->
-                <customFields>{"service":"auth-service","environment":"${spring.profiles.active}"}</customFields>
-                
-                <!-- Include MDC (Mapped Diagnostic Context) -->
-                <includeMdc>true</includeMdc>
-                
-                <!-- Include context name -->
-                <includeContext>true</includeContext>
-                
-                <!-- Include caller data (file, line, method) - disable in prod for performance -->
-                <includeCallerData>false</includeCallerData>
-                
-                <!-- Include stack trace -->
-                <includeStackTrace>true</includeStackTrace>
-                
-                <!-- Shorten logger names -->
-                <shortenedLoggerNameLength>36</shortenedLoggerNameLength>
-            </encoder>
-        </appender>
-        
-        <!-- File Appender with JSON format and rotation -->
-        <appender name="JSON_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-            <file>${LOG_FILE}</file>
-            
-            <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-                <!-- Rollover daily -->
-                <fileNamePattern>${LOG_FILE}.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
-                <!-- Each file should be at most 100MB -->
-                <maxFileSize>100MB</maxFileSize>
-                <!-- Keep 30 days worth of history -->
-                <maxHistory>30</maxHistory>
-                <!-- Total size of all archive files -->
-                <totalSizeCap>5GB</totalSizeCap>
-            </rollingPolicy>
-            
-            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
-                <customFields>{"service":"auth-service","environment":"${spring.profiles.active}"}</customFields>
+                <customFields>{"service":"${appName:-auth-service}","environment":"${spring.profiles.active:-default}"}</customFields>
                 <includeMdc>true</includeMdc>
                 <includeContext>true</includeContext>
                 <includeCallerData>false</includeCallerData>
@@ -66,18 +89,31 @@
                 <shortenedLoggerNameLength>36</shortenedLoggerNameLength>
             </encoder>
         </appender>
-        
+
+        <appender name="ASYNC_JSON_CONSOLE" class="ch.qos.logback.classic.AsyncAppender">
+            <appender-ref ref="JSON_CONSOLE"/>
+            <queueSize>1024</queueSize>
+            <discardingThreshold>0</discardingThreshold>
+            <neverBlock>true</neverBlock>
+            <includeCallerData>false</includeCallerData>
+            <maxFlushTime>1000</maxFlushTime>
+        </appender>
+
+        <root level="INFO">
+            <appender-ref ref="ASYNC_JSON_CONSOLE"/>
+            <appender-ref ref="ASYNC_JSON_FILE"/>
+        </root>
+    </springProfile>
+    
     <!-- Application-specific loggers -->
     <logger name="com.lodhi.auth" level="INFO"/>
-    <logger name="com.lodhi.auth.security" level="DEBUG"/>
+    <logger name="com.lodhi.auth.security" level="INFO"/>
     <logger name="com.lodhi.auth.audit" level="INFO"/>
     
     <!-- Third-party loggers -->
     <logger name="org.springframework.security" level="WARN"/>
     <logger name="org.springframework.web" level="WARN"/>
     <logger name="org.hibernate" level="WARN"/>
-    <logger name="org.hibernate.SQL" level="DEBUG"/>
-    <logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="TRACE"/>
     
     <!-- Reduce HikariCP noise -->
     <logger name="com.zaxxer.hikari" level="INFO"/>

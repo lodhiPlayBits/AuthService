@@ -50,11 +50,19 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
 
+    // Specific handler for disabled accounts
+    @ExceptionHandler(org.springframework.security.authentication.DisabledException.class)
+    public ResponseEntity<ErrorMessage> handleDisabledException(org.springframework.security.authentication.DisabledException ex) {
+        log.warn("Authentication failed: DisabledException - {}", ex.getMessage());
+        ErrorMessage body = ErrorMessage.of("Your account has been disabled. Please contact support.", ErrorCode.UNAUTHORIZED, HttpStatus.UNAUTHORIZED);
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
+    }
+
     // Spring Security's own hierarchy — covers BadCredentialsException, UsernameNotFoundException, etc.
     // Generic message on purpose: prevents username enumeration.
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<ErrorMessage> handleAuthenticationException(AuthenticationException ex) {
-        log.warn("Authentication failed: {}", ex.getClass().getSimpleName());
+        log.warn("Authentication failed: {} - {}", ex.getClass().getSimpleName(), ex.getMessage());
         ErrorMessage body = ErrorMessage.of("Invalid username or password", ErrorCode.UNAUTHORIZED, HttpStatus.UNAUTHORIZED);
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
     }

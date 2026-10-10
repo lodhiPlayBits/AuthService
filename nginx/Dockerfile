@@ -1,7 +1,7 @@
 FROM openresty/openresty:1.25.3.1-alpine
 
-# Install openssl for runtime self-signed cert generation (if needed)
-RUN apk add --no-cache openssl
+# Install openssl for runtime self-signed cert generation (if needed) and curl for healthcheck
+RUN apk add --no-cache openssl curl
 
 # Create the nginx user/group — this Alpine-based OpenResty image
 # doesn't ship one by default, and nginx.conf's "user nginx;" directive

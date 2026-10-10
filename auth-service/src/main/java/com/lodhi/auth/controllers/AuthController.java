@@ -77,7 +77,7 @@ public class AuthController {
         String refreshToken = authUtils.readRefreshTokenFromCookie(request)
                 .orElseThrow(() -> new BadCredentialsException("Refresh token missing from cookie"));
 
-        return ok(refreshTokenService.rotate(refreshToken, response));
+        return ok(refreshTokenService.rotate(refreshToken, request, response));
     }
 
     /**
@@ -91,10 +91,14 @@ public class AuthController {
             HttpServletRequest request,
             HttpServletResponse response
     ) {
-        String refreshToken = authUtils.readRefreshTokenFromCookie(request)
-                .orElseThrow(() -> new BadCredentialsException("Refresh token missing from cookie"));
-
-        authService.logout(refreshToken, request, response);
+        java.util.Optional<String> refreshTokenOpt = authUtils.readRefreshTokenFromCookie(request);
+        if (refreshTokenOpt.isPresent()) {
+            try {
+                authService.logout(refreshTokenOpt.get(), request, response);
+            } catch (BadCredentialsException e) {
+                // Ignore: user is already logged out or token is invalid
+            }
+        }
         
         return ResponseEntity.noContent().build();
     }
@@ -121,6 +125,5 @@ public class AuthController {
         
         return ResponseEntity.noContent().build();
     }
-
 
 }

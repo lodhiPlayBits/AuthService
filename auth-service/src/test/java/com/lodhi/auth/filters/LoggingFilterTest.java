@@ -71,6 +71,18 @@ class LoggingFilterTest {
     }
 
     @Test
+    void doFilterInternal_SanitizesInvalidCorrelationId() throws ServletException, IOException {
+        String longId = "12345678901234567890123456789012345678901234567890123";
+        request.addHeader("X-Request-ID", longId + "!@#$");
+        
+        loggingFilter.doFilterInternal(request, response, filterChain);
+
+        String id = response.getHeader("X-Request-ID");
+        assertEquals("12345678901234567890123456789012345678901234567890", id);
+        verify(filterChain).doFilter(request, response);
+    }
+
+    @Test
     void doFilterInternal_ExtractsIpFromXForwardedFor() throws ServletException, IOException {
         request.addHeader("X-Forwarded-For", "192.168.1.1, 10.0.0.1");
         

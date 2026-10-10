@@ -22,6 +22,12 @@ spring:
   flyway:
     enabled: false # disable flyway for h2 to avoid postgresql specific syntax issues
 
+  # Pin a literal broker address: the base config uses ${KAFKA_BOOTSTRAP_SERVERS:localhost:19092}
+  # and an empty env var would make @KafkaListener registry startup fail with
+  # "No resolvable bootstrap urls given in bootstrap.servers".
+  kafka:
+    bootstrap-servers: localhost:19092
+
 management:
   health:
     redis:
@@ -29,7 +35,7 @@ management:
 
 security:
   jwt:
-    secret: "test-secret-key-must-be-at-least-32-bytes-long-for-hmac-sha256"
+    secret: "test-secret-key-must-be-at-least-64-bytes-long-for-hmac-sha512-algorithm-test"
     issuer: "test-issuer"
     audience: "test-audience"
     access-ttl-second: 3600
@@ -43,3 +49,7 @@ security:
 oauth2:
   google:
     client-id: "test-google-client-id"
+
+logging:
+  file:
+    name: ${java.io.tmpdir:-/tmp}/auth-service-test.log
