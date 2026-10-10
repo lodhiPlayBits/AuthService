@@ -148,7 +148,7 @@ export const useAnnouncements = () => {
       setSocketStatus('idle');
       client.deactivate();
     };
-  }, [isAuthenticated, token]);
+  }, [isAuthenticated, token, user]);
 
   const publish = useCallback((destination, body) => {
     const client = clientRef.current;

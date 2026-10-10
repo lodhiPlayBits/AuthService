@@ -14,7 +14,95 @@ env:
   AWS_REGION: ap-northeast-1
 
 jobs:
-  build-and-push:
+  # Stage 1: tests / lint
+  test:
+    name: test (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: auth-service
+            kind: maven
+          - name: notification-service
+            kind: maven
+          - name: client
+            kind: node
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java
+        if: matrix.kind == 'maven'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: |
+            notification-contract/pom.xml
+            ${{ matrix.name }}/pom.xml
+
+      - name: Install notification-contract
+        if: matrix.kind == 'maven'
+        working-directory: notification-contract
+        run: mvn -B -DskipTests install
+
+      - name: Maven verify
+        if: matrix.kind == 'maven'
+        working-directory: ${{ matrix.name }}
+        run: mvn -B verify
+
+      - name: Set up Node
+        if: matrix.kind == 'node'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: ${{ matrix.name }}/package-lock.json
+
+      - name: Install, lint, test and build
+        if: matrix.kind == 'node'
+        working-directory: ${{ matrix.name }}
+        run: |
+          npm ci
+          npm run lint
+          npm test
+          npm run build
+
+  # Stage 2: Trivy filesystem scan
+  scan:
+    name: scan (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        name: [auth-service, notification-service, client, kafka, nginx, redis]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: ./${{ matrix.name }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '0'   # report only; set to '1' to fail the build
+          format: table
+          output: trivy-fs.txt
+
+      - name: Trivy summary
+        if: always()
+        run: |
+          {
+            echo "## Trivy filesystem scan: ${{ matrix.name }}"
+            echo '```'; cat trivy-fs.txt; echo '```'
+          } >> $GITHUB_STEP_SUMMARY
+
+  # Stage 3: build image, scan image, push to ECR
+  build-push:
+    name: build-push (${{ matrix.name }})
+    needs: [test, scan]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -35,15 +123,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Trivy filesystem scan
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          scan-type: fs
-          scan-ref: ./${{ matrix.name }}
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: '0'   # report only; set to '1' to fail the build
-
       - name: Set up Java
         if: matrix.maven
         uses: actions/setup-java@v5
@@ -60,10 +139,10 @@ jobs:
         working-directory: notification-contract
         run: mvn -B -DskipTests install
 
-      - name: Build and test
+      - name: Package jar
         if: matrix.maven
         working-directory: ${{ matrix.name }}
-        run: mvn -B verify
+        run: mvn -B -DskipTests package
 
       - name: Set image tag
         id: tag
@@ -84,6 +163,16 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: '0'   # report only; set to '1' to fail the build
+          format: table
+          output: trivy-image.txt
+
+      - name: Trivy summary
+        if: always()
+        run: |
+          {
+            echo "## Trivy image scan: ${{ matrix.name }}"
+            echo '```'; cat trivy-image.txt; echo '```'
+          } >> $GITHUB_STEP_SUMMARY
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -100,3 +189,15 @@ jobs:
           IMAGE=${{ steps.ecr.outputs.registry }}/${{ matrix.name }}:${{ steps.tag.outputs.tag }}
           docker tag ${{ matrix.name }}:${{ steps.tag.outputs.tag }} $IMAGE
           docker push $IMAGE
+
+  # Single required check for branch protection
+  ci-passed:
+    if: always()
+    needs: [test, scan, build-push]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any stage failed
+        run: |
+          test "${{ needs.test.result }}" = "success" && \
+          test "${{ needs.scan.result }}" = "success" && \
+          test "${{ needs.build-push.result }}" = "success"
