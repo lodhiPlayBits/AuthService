@@ -18,12 +18,14 @@ import java.time.Instant;
 @Builder
 public class AccountEvent implements Serializable {
 
+    private static final long serialVersionUID = 1L;
+
     private String eventId;
     private AccountEventType type;
     private Long userId;
     private String email;
     private String message;
-    private Object payload;
+    private transient Object payload;  // Excluded from serialization
     private Instant timestamp;
 
     public enum AccountEventType {

@@ -83,7 +83,7 @@ public class KafkaAnnouncementConfig {
         config.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
-        config.put(JsonSerializer.ADD_TYPE_INFO_HEADERS, false);
+        config.put("spring.json.add.type.headers", false);
 
         config.put(ProducerConfig.ACKS_CONFIG, "all");
         config.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
@@ -109,9 +109,9 @@ public class KafkaAnnouncementConfig {
         config.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
         config.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
 
-        config.put(JsonDeserializer.TRUSTED_PACKAGES, "com.lodhi.notification.contract.events");
-        config.put(JsonDeserializer.VALUE_DEFAULT_TYPE, BroadcastAnnouncementEvent.class.getName());
-        config.put(JsonDeserializer.USE_TYPE_INFO_HEADERS, false);
+        config.put("spring.json.trusted.packages", "com.lodhi.notification.contract.events");
+        config.put("spring.json.value.default.type", BroadcastAnnouncementEvent.class.getName());
+        config.put("spring.json.use.type.headers", false);
 
         return new DefaultKafkaConsumerFactory<>(
             config,
@@ -150,7 +150,7 @@ public class KafkaAnnouncementConfig {
         config.put(ConsumerConfig.GROUP_ID_CONFIG, "ws-admin-responses-" + UUID.randomUUID());
         config.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
         config.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
-        config.put(JsonDeserializer.TRUSTED_PACKAGES, "*");
+        config.put("spring.json.trusted.packages", "*");
         return new DefaultKafkaConsumerFactory<>(config, new StringDeserializer(), new JsonDeserializer<>(Map.class, false));
     }
 

@@ -21,7 +21,6 @@ import org.springframework.messaging.MessagingException;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.lodhi.notification.contract.events.BroadcastAnnouncementEvent;
 
 @ExtendWith(MockitoExtension.class)

@@ -19,14 +19,17 @@ public class LoggingUtils {
     public static final String ENDPOINT = "endpoint";
     public static final String HTTP_METHOD = "httpMethod";
     public static final String SESSION_ID = "sessionId";
+    
+    // Constants
+    private static final String UNKNOWN = "unknown";
 
     public static String extractClientIp(jakarta.servlet.http.HttpServletRequest request) {
         String xRealIp = request.getHeader("X-Real-IP");
-        if (xRealIp != null && !xRealIp.isEmpty() && !"unknown".equalsIgnoreCase(xRealIp)) {
+        if (xRealIp != null && !xRealIp.isEmpty() && !UNKNOWN.equalsIgnoreCase(xRealIp)) {
             return xRealIp;
         }
         String xForwardedFor = request.getHeader("X-Forwarded-For");
-        if (xForwardedFor != null && !xForwardedFor.isEmpty() && !"unknown".equalsIgnoreCase(xForwardedFor)) {
+        if (xForwardedFor != null && !xForwardedFor.isEmpty() && !UNKNOWN.equalsIgnoreCase(xForwardedFor)) {
             return xForwardedFor.split(",")[0].trim();
         }
         return request.getRemoteAddr();
@@ -39,7 +42,7 @@ public class LoggingUtils {
     }
 
     public static String maskIdentifier(String identifier) {
-        if (identifier == null || identifier.isBlank()) return "unknown";
+        if (identifier == null || identifier.isBlank()) return UNKNOWN;
         if (identifier.contains("@")) {
             String[] parts = identifier.split("@", 2);
             String name = parts[0];

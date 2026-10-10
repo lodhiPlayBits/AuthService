@@ -39,14 +39,26 @@ class UserServiceImplTest {
     @Mock private BCryptService bcryptService;
     @Mock private AccountEventProducer accountEventProducer;
     @Mock private com.lodhi.auth.respositories.RefreshTokenRepository refreshTokenRepository;
+    @Mock private UserServiceImpl selfMock;
 
-    @InjectMocks
     private UserServiceImpl userService;
 
     private User user;
 
     @BeforeEach
     void setUp() {
+        // Create the service with mocked self reference
+        userService = new UserServiceImpl(
+            userRepository,
+            modelMapper,
+            roleService,
+            passwordEncoder,
+            bcryptService,
+            refreshTokenRepository,
+            accountEventProducer,
+            selfMock
+        );
+        
         user = User.builder()
                 .id(1L)
                 .email("test@example.com")
@@ -283,12 +295,13 @@ class UserServiceImplTest {
         when(bcryptService.matches("encoded_password", user.getPassword())).thenReturn(true);
         when(bcryptService.matches("new_password", user.getPassword())).thenReturn(false);
         when(passwordEncoder.encode("new_password")).thenReturn("new_encoded");
+        
+        // Mock the self.saveNewPassword call
+        doNothing().when(selfMock).saveNewPassword(eq(1L), eq("new_encoded"));
 
         userService.changePassword(1L, req);
 
-        verify(userRepository).save(user);
-        verify(refreshTokenRepository).revokeAllForUser(1L);
-        assertEquals("new_encoded", user.getPassword());
+        verify(selfMock).saveNewPassword(1L, "new_encoded");
     }
 
     @Test

@@ -53,51 +53,69 @@ public class NotificationController {
      */
     private void replayMissedEvents(Long userId, SseEmitter emitter, String lastEventId) {
         try {
-            List<Object> missedEvents = redisTemplate.opsForList()
-                    .range(SseConnectionManager.missedEventsKey(userId), 0, -1);
+            List<Object> missedEvents = fetchMissedEvents(userId);
             if (missedEvents == null || missedEvents.isEmpty()) {
                 return;
             }
 
-            boolean startReplay = false;
-            int replayCount = 0;
-            for (Object obj : missedEvents) {
-                if (!(obj instanceof Map<?, ?> eventMap)) {
-                    continue;
-                }
-                String eventId = (String) eventMap.get("eventId");
-
-                if (!startReplay) {
-                    // Everything up to and including lastEventId is old news
-                    if (lastEventId.equals(eventId)) {
-                        startReplay = true;
-                    }
-                    continue;
-                }
-
-                String eventType = (String) eventMap.get("type");
-                String eventData = objectMapper.writeValueAsString(eventMap);
-                boolean sent = sseConnectionManager.sendToConnection(userId, emitter, () -> {
-                    SseEmitter.SseEventBuilder builder = SseEmitter.event()
-                            .name(eventType != null ? eventType : "UNKNOWN")
-                            .data(eventData)
-                            .reconnectTime(5000);
-                    if (eventId != null) {
-                        builder.id(eventId);
-                    }
-                    return builder;
-                });
-                if (!sent) {
-                    break;
-                }
-                replayCount++;
-            }
-
+            int replayCount = replayEvents(userId, emitter, lastEventId, missedEvents);
+            
             if (replayCount > 0) {
                 log.info("Replayed {} missed events for userId={}", replayCount, userId);
             }
         } catch (Exception e) {
             log.warn("Failed to replay missed events for userId={}, keeping stream open: {}", userId, e.getMessage());
         }
+    }
+
+    private List<Object> fetchMissedEvents(Long userId) {
+        return redisTemplate.opsForList()
+                .range(SseConnectionManager.missedEventsKey(userId), 0, -1);
+    }
+
+    private int replayEvents(Long userId, SseEmitter emitter, String lastEventId, List<Object> missedEvents) 
+            throws Exception {
+        boolean startReplay = false;
+        int replayCount = 0;
+        
+        for (Object obj : missedEvents) {
+            if (!(obj instanceof Map<?, ?> eventMap)) {
+                continue;
+            }
+            
+            String eventId = (String) eventMap.get("eventId");
+            
+            if (!startReplay) {
+                // Everything up to and including lastEventId is old news
+                if (lastEventId.equals(eventId)) {
+                    startReplay = true;
+                }
+                continue;
+            }
+            
+            if (!sendEvent(userId, emitter, eventMap, eventId)) {
+                return replayCount;
+            }
+            replayCount++;
+        }
+        
+        return replayCount;
+    }
+
+    private boolean sendEvent(Long userId, SseEmitter emitter, Map<?, ?> eventMap, String eventId) 
+            throws Exception {
+        String eventType = (String) eventMap.get("type");
+        String eventData = objectMapper.writeValueAsString(eventMap);
+        
+        return sseConnectionManager.sendToConnection(userId, emitter, () -> {
+            SseEmitter.SseEventBuilder builder = SseEmitter.event()
+                    .name(eventType != null ? eventType : "UNKNOWN")
+                    .data(eventData)
+                    .reconnectTime(5000);
+            if (eventId != null) {
+                builder.id(eventId);
+            }
+            return builder;
+        });
     }
 }

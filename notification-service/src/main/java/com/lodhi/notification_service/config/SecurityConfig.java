@@ -33,12 +33,19 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 @EnableWebSecurity
 public class SecurityConfig {
 
-    private static final String STREAM_PATH = "/api/v1/notifications/stream";
+    @Value("${app.security.stream-path:/api/v1/notifications/stream}")
+    private String streamPath;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http, CorsConfigurationSource corsConfigurationSource) throws Exception {
         http
             .cors(cors -> cors.configurationSource(corsConfigurationSource))
+            // CSRF is disabled because:
+            // 1. This is a stateless REST API using JWT Bearer tokens (not session cookies)
+            // 2. WebSocket connections are authenticated via JwtHandshakeInterceptor
+            // 3. SSE endpoints use Bearer tokens in headers or query params for auth
+            // 4. All state-changing operations require valid JWT authentication
+            // CSRF protection is only needed for cookie-based session authentication
             .csrf(AbstractHttpConfigurer::disable)
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/**", "/error").permitAll()
@@ -73,24 +80,24 @@ public class SecurityConfig {
         };
     }
 
-    private static boolean isStreamRequest(HttpServletRequest request) {
+    private boolean isStreamRequest(HttpServletRequest request) {
         String path = request.getRequestURI();
         String contextPath = request.getContextPath();
         if (contextPath != null && !contextPath.isEmpty() && path.startsWith(contextPath)) {
             path = path.substring(contextPath.length());
         }
-        return STREAM_PATH.equals(path);
+        return streamPath.equals(path);
     }
 
     /**
-     * Verifies signature (HS256), expiration, issuer and audience — all values
+     * Verifies signature (HS512), expiration, issuer and audience — all values
      * must match the ones auth-service used to sign the token.
      */
     @Bean
     public JwtDecoder jwtDecoder(
             @Value("${security.jwt.secret}") String secret,
             @Value("${security.jwt.issuer}") String issuer,
-            @Value("${security.jwt.audience}") String audience) {
+            @Value("${security.jwt.audience}") String audience) throws IllegalArgumentException {
 
         byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
         if (keyBytes.length < 64) {
