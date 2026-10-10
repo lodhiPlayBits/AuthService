@@ -1,3 +1,4 @@
+
 name: CI
 
 on:
@@ -11,12 +12,14 @@ permissions:
 
 env:
   AWS_REGION: ap-northeast-1
+  ECR_REGISTRY: 117963306411.dkr.ecr.ap-northeast-1.amazonaws.com
 
 jobs:
-  # Stage 1: tests / lint
+  # Stage 1: Tests, lint and application builds
   test:
     name: test (${{ matrix.name }})
     runs-on: ubuntu-latest
+
     strategy:
       fail-fast: false
       matrix:
@@ -27,6 +30,7 @@ jobs:
             kind: maven
           - name: client
             kind: node
+
     steps:
       - uses: actions/checkout@v4
 
@@ -57,50 +61,60 @@ jobs:
         with:
           node-version: '20'
           cache: npm
-          cache-dependency-path: ${{ matrix.name }}/package-lock.json
+          cache-dependency-path: client/package-lock.json
 
       - name: Install, lint, test and build
         if: matrix.kind == 'node'
-        working-directory: ${{ matrix.name }}
+        working-directory: client
         run: |
-          npm ci --ignore-scripts
+          npm ci
           npm run lint
           npm test
           npm run build
 
-  # Stage 2: Trivy filesystem scan
+  # Stage 2: Filesystem security scans
   scan:
     name: scan (${{ matrix.name }})
     runs-on: ubuntu-latest
+
     strategy:
       fail-fast: false
       matrix:
         name: [auth-service, notification-service, client, kafka, nginx, redis]
+
     steps:
       - uses: actions/checkout@v4
 
       - name: Trivy filesystem scan
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           scan-type: fs
           scan-ref: ./${{ matrix.name }}
           severity: HIGH,CRITICAL
           ignore-unfixed: true
-          exit-code: '0'   # report only; set to '1' to fail the build
+          exit-code: '0'
           format: table
           output: trivy-fs.txt
 
-      - name: Trivy summary
+      - name: Publish scan summary
         if: always()
         run: |
           {
             echo "## Trivy filesystem scan: ${{ matrix.name }}"
-            echo '```'; cat trivy-fs.txt; echo '```'
-          } >> $GITHUB_STEP_SUMMARY
+            echo '```'
+            if [ -f trivy-fs.txt ]; then
+              cat trivy-fs.txt
+            else
+              echo "No report generated."
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
-  # Stage: SonarCloud analysis
+  # Stage 3: SonarCloud analysis for auth-service
   sonar:
+    name: sonar
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -112,23 +126,36 @@ jobs:
           java-version: '21'
           cache: maven
 
+      - name: Install notification-contract
+        run: mvn -B -DskipTests install -f notification-contract/pom.xml
+
       - name: Build and SonarCloud analysis
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
-          mvn -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
+          test -n "$SONAR_TOKEN" || {
+            echo "SONAR_TOKEN repository secret is missing."
+            exit 1
+          }
+
+          mvn -B verify \
+            org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
+            -f auth-service/pom.xml \
             -Dsonar.host.url=https://sonarcloud.io \
             -Dsonar.organization=lodhiplaybits \
             -Dsonar.projectKey=lodhiPlayBits_AuthService
 
-  # Stage 3: build image, scan image, push to ECR
+  # Stage 4: Build and scan images on PRs;
+  # push images to ECR only after a branch push.
   build-push:
     name: build-push (${{ matrix.name }})
     needs: [test, scan]
     runs-on: ubuntu-latest
+
     permissions:
-      id-token: write
       contents: read
+      id-token: write
+
     strategy:
       fail-fast: false
       matrix:
@@ -145,6 +172,7 @@ jobs:
             maven: false
           - name: redis
             maven: false
+
     steps:
       - uses: actions/checkout@v4
 
@@ -164,66 +192,102 @@ jobs:
         working-directory: notification-contract
         run: mvn -B -DskipTests install
 
-      - name: Package jar
+      - name: Package application
         if: matrix.maven
         working-directory: ${{ matrix.name }}
         run: mvn -B -DskipTests package
 
       - name: Set image tag
         id: tag
+        shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "tag=pr-${{ github.event.number }}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            TAG="pr-${{ github.event.number }}-${GITHUB_SHA::7}"
           else
-            echo "tag=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+            TAG="${GITHUB_SHA::7}"
           fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Docker build
-        run: docker build -t ${{ matrix.name }}:${{ steps.tag.outputs.tag }} ./${{ matrix.name }}
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t "${{ matrix.name }}:${{ steps.tag.outputs.tag }}" \
+            "./${{ matrix.name }}"
 
       - name: Trivy image scan
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           image-ref: ${{ matrix.name }}:${{ steps.tag.outputs.tag }}
           severity: HIGH,CRITICAL
           ignore-unfixed: true
-          exit-code: '0'   # report only; set to '1' to fail the build
+          exit-code: '0'
           format: table
           output: trivy-image.txt
 
-      - name: Trivy summary
+      - name: Publish image scan summary
         if: always()
         run: |
           {
             echo "## Trivy image scan: ${{ matrix.name }}"
-            echo '```'; cat trivy-image.txt; echo '```'
-          } >> $GITHUB_STEP_SUMMARY
+            echo '```'
+            if [ -f trivy-image.txt ]; then
+              cat trivy-image.txt
+            else
+              echo "No report generated."
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        if: github.event_name == 'push'
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::117963306411:role/GitHubActionsECRPushRole
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Login to ECR
-        id: ecr
-        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+      - name: Login to Amazon ECR
+        if: github.event_name == 'push'
+        uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Push image
+      - name: Push image to ECR
+        if: github.event_name == 'push'
+        shell: bash
         run: |
-          IMAGE=${{ steps.ecr.outputs.registry }}/${{ matrix.name }}:${{ steps.tag.outputs.tag }}
-          docker tag ${{ matrix.name }}:${{ steps.tag.outputs.tag }} $IMAGE
-          docker push $IMAGE
+          set -euo pipefail
+
+          LOCAL_IMAGE="${{ matrix.name }}:${{ steps.tag.outputs.tag }}"
+          REMOTE_IMAGE="${ECR_REGISTRY}/${{ matrix.name }}:${{ steps.tag.outputs.tag }}"
+
+          docker tag "$LOCAL_IMAGE" "$REMOTE_IMAGE"
+          docker push "$REMOTE_IMAGE"
 
   # Single required check for branch protection
   ci-passed:
+    name: ci-passed
     if: always()
     needs: [test, scan, sonar, build-push]
     runs-on: ubuntu-latest
+
     steps:
-      - name: Fail if any stage failed
+      - name: Verify all stages passed
+        shell: bash
+        env:
+          TEST_RESULT: ${{ needs.test.result }}
+          SCAN_RESULT: ${{ needs.scan.result }}
+          SONAR_RESULT: ${{ needs.sonar.result }}
+          BUILD_RESULT: ${{ needs.build-push.result }}
         run: |
-          test "${{ needs.test.result }}" = "success" && \
-          test "${{ needs.scan.result }}" = "success" && \
-          test "${{ needs.sonar.result }}" = "success" && \
-          test "${{ needs.build-push.result }}" = "success"
+          set -euo pipefail
+
+          for result in \
+            "$TEST_RESULT" \
+            "$SCAN_RESULT" \
+            "$SONAR_RESULT" \
+            "$BUILD_RESULT"; do
+            if [[ "$result" != "success" ]]; then
+              echo "CI failed: a required stage finished with result: $result"
+              exit 1
+            fi
+          done
+
+          echo "All required CI stages passed."
