@@ -55,6 +55,66 @@ jobs:
         working-directory: ${{ matrix.name }}
         run: mvn -B verify
 
+      - name: Upload JaCoCo coverage report
+        if: matrix.kind == 'maven'
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report-${{ matrix.name }}
+          path: ${{ matrix.name }}/target/site/jacoco/
+          retention-days: 30
+
+      - name: Add coverage comment to PR
+        if: matrix.kind == 'maven' && github.event_name == 'pull_request'
+        uses: madrapps/jacoco-report@v1.8.0
+        with:
+          paths: ${{ matrix.name }}/target/site/jacoco/jacoco.xml
+          token: ${{ secrets.GITHUB_TOKEN }}
+          min-coverage-overall: 70
+          min-coverage-changed-files: 70
+          title: 'Code Coverage Report - ${{ matrix.name }}'
+
+      - name: Generate coverage summary
+        if: matrix.kind == 'maven' && always()
+        run: |
+          if [ -f "${{ matrix.name }}/target/site/jacoco/jacoco.csv" ]; then
+            echo "## JaCoCo Coverage Report - ${{ matrix.name }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            # Parse CSV for accurate coverage (line 2 has totals)
+            TOTALS=$(sed -n '2p' "${{ matrix.name }}/target/site/jacoco/jacoco.csv")
+            INSTRUCTION_MISSED=$(echo $TOTALS | cut -d',' -f4)
+            INSTRUCTION_COVERED=$(echo $TOTALS | cut -d',' -f5)
+            BRANCH_MISSED=$(echo $TOTALS | cut -d',' -f6)
+            BRANCH_COVERED=$(echo $TOTALS | cut -d',' -f7)
+            LINE_MISSED=$(echo $TOTALS | cut -d',' -f8)
+            LINE_COVERED=$(echo $TOTALS | cut -d',' -f9)
+            
+            # Calculate percentages
+            INSTRUCTION_TOTAL=$((INSTRUCTION_MISSED + INSTRUCTION_COVERED))
+            BRANCH_TOTAL=$((BRANCH_MISSED + BRANCH_COVERED))
+            LINE_TOTAL=$((LINE_MISSED + LINE_COVERED))
+            
+            if [ $INSTRUCTION_TOTAL -gt 0 ]; then
+              INSTRUCTION_PCT=$((INSTRUCTION_COVERED * 100 / INSTRUCTION_TOTAL))
+              echo "📊 **Instruction Coverage:** ${INSTRUCTION_PCT}% (${INSTRUCTION_COVERED}/${INSTRUCTION_TOTAL})" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            if [ $BRANCH_TOTAL -gt 0 ]; then
+              BRANCH_PCT=$((BRANCH_COVERED * 100 / BRANCH_TOTAL))
+              echo "🔀 **Branch Coverage:** ${BRANCH_PCT}% (${BRANCH_COVERED}/${BRANCH_TOTAL})" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            if [ $LINE_TOTAL -gt 0 ]; then
+              LINE_PCT=$((LINE_COVERED * 100 / LINE_TOTAL))
+              echo "📝 **Line Coverage:** ${LINE_PCT}% (${LINE_COVERED}/${LINE_TOTAL})" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "📁 [Download Full Report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Coverage report not found for ${{ matrix.name }}" >> $GITHUB_STEP_SUMMARY
+          fi
+
       - name: Set up Node
         if: matrix.kind == 'node'
         uses: actions/setup-node@v4
