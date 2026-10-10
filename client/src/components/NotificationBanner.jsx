@@ -39,7 +39,8 @@ export default function NotificationBanner({ notification, onClose, onAcknowledg
     
     animFrame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(animFrame);
-  }, [notification, onClose]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notification]);
 
   if (!notification) return null;
 

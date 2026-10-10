@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useParams } from 'react-router-dom';
-import { User, Mail, ArrowLeft, Save, Lock, Phone, UserCircle, CheckCircle2 } from 'lucide-react';
+import { User, ArrowLeft, Save, Lock, UserCircle, CheckCircle2 } from 'lucide-react';
 import { authGet, authPut, authPost } from '../utils/api';
 
 export default function EditProfile() {

@@ -112,7 +112,7 @@ export default function Signup() {
                   };
                   login(userData, data.accessToken);
                   navigate(data.profileComplete ? '/dashboard' : '/edit-profile');
-                } catch (err) {
+                } catch {
                   setErrorMsg('Google registration failed.');
                 }
               }}

@@ -1,4 +1,3 @@
-import React from 'react';
 import './AuroraBackground.css';
 
 export default function AuroraBackground({ children }) {

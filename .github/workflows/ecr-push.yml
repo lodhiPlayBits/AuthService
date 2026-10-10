@@ -60,12 +60,13 @@ jobs:
           cache: npm
           cache-dependency-path: ${{ matrix.name }}/package-lock.json
 
-      - name: Install, lint and build
+      - name: Install, lint, test and build
         if: matrix.kind == 'node'
         working-directory: ${{ matrix.name }}
         run: |
           npm ci
           npm run lint
+          npm test
           npm run build
 
   # Stage 2: Trivy filesystem scan

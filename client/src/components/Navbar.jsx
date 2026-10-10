@@ -1,8 +1,9 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Zap, LogOut, User, Menu, X, Bell } from 'lucide-react';
+import { Zap, LogOut, User, Menu, X } from 'lucide-react';
 import ConnectionIndicator from './ConnectionIndicator';
 import { useState, useEffect } from 'react';
+import React from 'react';
 
 export default function Navbar({ connectionState }) {
   const { isAuthenticated, user, logout } = useAuth();
@@ -17,10 +18,14 @@ export default function Navbar({ connectionState }) {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Close mobile menu on navigation
+  // Close mobile menu on navigation - using ref to avoid effect warning
+  const prevPathRef = React.useRef(location.pathname);
   useEffect(() => {
-    setMobileMenuOpen(false);
-  }, [location.pathname]);
+    if (prevPathRef.current !== location.pathname && mobileMenuOpen) {
+      setMobileMenuOpen(false);
+      prevPathRef.current = location.pathname;
+    }
+  }, [location.pathname, mobileMenuOpen]);
 
   const handleLogout = () => {
     logout();
