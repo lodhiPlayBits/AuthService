@@ -15,6 +15,7 @@ env:
   # Deploy target on the EC2 instance - change to match your VM
   DEPLOY_USER: ubuntu
   DEPLOY_SCRIPT: /home/ubuntu/deploy.sh
+  PUBLIC_URL: https://authvolt.fun
 
 jobs:
   # Stage 1: Tests, lint and application builds
@@ -478,7 +479,8 @@ jobs:
 
           echo "All required CI stages passed."
 
-  # Stage 5: Deploy to EC2 via SSM - only on a push to main (i.e. a merged PR)
+  # Stage 5: Deploy to EC2 via SSM - only on a push to main (i.e. a merged PR).
+  # deploy.sh itself health-checks + smoke-tests on the VM and rolls back on failure.
   deploy:
     name: deploy
     needs: ci-passed
@@ -494,6 +496,8 @@ jobs:
       cancel-in-progress: false
 
     steps:
+      - uses: actions/checkout@v4
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -501,37 +505,90 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Deploy via SSM
-        shell: bash
         env:
           INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
         run: |
-          set -euo pipefail
-          test -n "$INSTANCE_ID" || { echo "EC2_INSTANCE_ID secret is missing."; exit 1; }
-
           TAG="${GITHUB_SHA::7}"
-          PARAMS=$(jq -nc --arg c "sudo -u $DEPLOY_USER $DEPLOY_SCRIPT $TAG" '{commands: [$c]}')
+          SSM_COMMENT="Deploy $TAG" \
+            bash .github/scripts/ssm-run.sh "sudo -u $DEPLOY_USER $DEPLOY_SCRIPT $TAG"
 
-          CMD_ID=$(aws ssm send-command \
-            --instance-ids "$INSTANCE_ID" \
-            --document-name AWS-RunShellScript \
-            --comment "Deploy $TAG" \
-            --parameters "$PARAMS" \
-            --query Command.CommandId --output text)
-          echo "SSM command: $CMD_ID (tag $TAG)"
+  # Stage 6: Smoke test from outside the VM (internet -> DNS -> TLS -> nginx -> services)
+  smoke-test:
+    name: smoke-test
+    needs: deploy
+    runs-on: ubuntu-latest
 
-          STATUS=Pending
-          for i in $(seq 1 120); do
-            sleep 10
-            STATUS=$(aws ssm get-command-invocation \
-              --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
-              --query Status --output text 2>/dev/null || echo Pending)
-            echo "Status: $STATUS"
-            case "$STATUS" in Success|Failed|Cancelled|TimedOut) break ;; esac
-          done
+    steps:
+      - uses: actions/checkout@v4
 
-          echo "----- output from VM -----"
-          aws ssm get-command-invocation \
-            --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
-            --query '[StandardOutputContent,StandardErrorContent]' --output text || true
+      - name: Smoke test public endpoints
+        run: bash .github/scripts/smoke-test.sh "$PUBLIC_URL"
 
-          test "$STATUS" = "Success"
+  # Stage 7: Only when the public smoke test fails -
+  #   1. put the VM back on the previous main version
+  #   2. open a revert PR for a human to review (never pushes to main directly)
+  rollback:
+    name: rollback
+    needs: [deploy, smoke-test]
+    if: failure() && needs.smoke-test.result == 'failure'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write        # push the revert branch
+      pull-requests: write   # open the revert PR
+      id-token: write        # AWS OIDC
+
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::117963306411:role/GitHubActionsECRPushRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Roll back VM to previous version
+        env:
+          INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+          PREV_SHA: ${{ github.event.before }}
+        run: |
+          PREV="${PREV_SHA::7}"
+          echo "Rolling back from ${GITHUB_SHA::7} to $PREV"
+          SSM_COMMENT="Rollback to $PREV" \
+            bash .github/scripts/ssm-run.sh "sudo -u $DEPLOY_USER $DEPLOY_SCRIPT $PREV"
+
+      - name: Open revert PR
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREV_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          SHORT="${GITHUB_SHA::7}"
+          PREV_SHORT="${PREV_SHA::7}"
+          BRANCH="revert/$SHORT"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH" "$GITHUB_SHA"
+
+          # A merge commit needs -m 1 (keep main's side); a squash/plain commit does not
+          if [ "$(git rev-list --parents -n 1 "$GITHUB_SHA" | wc -w)" -gt 2 ]; then
+            git revert --no-edit -m 1 "$GITHUB_SHA"
+          else
+            git revert --no-edit "$GITHUB_SHA"
+          fi
+          git push origin "$BRANCH"
+
+          gh pr create --base main --head "$BRANCH" \
+            --title "Revert $SHORT: post-deploy smoke test failed" \
+            --body "Automated revert opened by run ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}.
+
+          The public smoke test failed after deploying \`$SHORT\`, so the VM was rolled back to \`$PREV_SHORT\`.
+
+          **Review before merging.** If the failure was not caused by this change (network, DNS, certificate), close this PR instead."
