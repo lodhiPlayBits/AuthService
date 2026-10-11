@@ -6,7 +6,7 @@
 
 **Production-oriented authentication, authorization and real-time notification platform built with Spring Boot 4, PostgreSQL, Redis, Kafka and an OpenResty/Nginx gateway.**
 
-AuthVolt provides secure user authentication: JWT access tokens, refresh-token rotation with token-family revocation, Google sign-in, role-based access control with fine-grained permissions, and gateway-level request protection. A separate notification service streams account events and admin announcements to users in real time over Kafka, SSE and WebSocket.
+AuthVolt provides secure user authentication: JWT access tokens, refresh-token rotation with token-family revocation, Google sign-in, role-based access control with fine-grained permissions, and gateway-level request protection. A separate notification service streams account events and admin announcements to users in real time over Kafka, Server-Sent Events and STOMP/WebSocket.
 
 The system is built backend-first, with security, database safety, observability, rate limiting and automated production deployment in mind.
 
@@ -14,99 +14,72 @@ The system is built backend-first, with security, database safety, observability
 
 ---
 
+## Contents
+
+- [Features](#features)
+- [Architecture](#architecture): runtime, CI/CD, design decisions, gateway, services, Kafka, data model
+- [Authentication flows](#authentication-flows): login, authorization, refresh, logout, Google
+- [Real-time notifications](#real-time-notifications): SSE, account events, WebSocket, announcements
+- [Tech stack](#tech-stack) · [Project structure](#project-structure) · [API endpoints](#api-endpoints)
+- [Environment](#environment-configuration) · [Running locally](#running-locally) · [Testing](#testing)
+- [Deployment](#deployment) · [Security](#security-considerations) · [Roadmap](#future-improvements)
+
+---
+
 ## Features
 
 ### Authentication
 
-* JWT-based authentication (HS512, issuer and audience validated)
-* Short-lived access tokens
-* Long-lived refresh tokens in `HttpOnly` cookies scoped to `/api/v1/auth`
-* Refresh-token rotation
-* Refresh-token reuse detection
-* Refresh-token family revocation
+* JWT access tokens (HS512, issuer and audience validated)
+* Short-lived access tokens, long-lived refresh tokens in `HttpOnly` cookies scoped to `/api/v1/auth`
+* Refresh-token rotation with an atomic "revoke if still active" update
+* Refresh-token reuse detection and token-family revocation
 * Refresh tokens stored as SHA-256 hashes, never in plain text
-* CSRF double-submit protection (`XSRF-TOKEN` cookie + `X-XSRF-TOKEN` header)
-* Login with **email, username or phone number** (identifier type detected automatically)
-* Google OAuth2 sign-in with a profile-completion step
-* Logout and logout-all-devices
-* Access-token blacklist in Redis, so logged-out tokens stop working immediately
-* BCrypt password hashing on virtual threads, behind a concurrency limit
+* CSRF double-submit protection on cookie endpoints (`XSRF-TOKEN` cookie + `X-XSRF-TOKEN` header)
+* Login with **email, username or phone number**
+* Google sign-in with a profile-completion step and no silent account linking
+* Logout and logout-all-devices, with the current access token blacklisted in Redis
+* BCrypt on virtual threads behind a semaphore, so login bursts can't starve the CPU
 
 ### Authorization / RBAC
 
-* Role-based access control
-* Fine-grained permissions
-* Roles and permissions stored in the database and editable at runtime
-* `@PreAuthorize` checks with **ownership rules** on user endpoints
+* Roles and fine-grained permissions stored in the database and editable at runtime
+* Roles and permissions carried in the access token, so there's no database lookup per request
+* `@PreAuthorize` with **ownership rules** on user endpoints
 * Custom `@RequiresPermission` aspect on admin endpoints
-* Dynamic role creation and deletion
-* Dynamic permission creation and deletion
-* Assign or revoke permissions on roles
-* Assign roles to users, enable or disable accounts
+* Assign or revoke permissions on roles, assign roles to users, enable or disable accounts
 * Audit log of every security-relevant event
 
-Example permissions:
+### Real-time notifications
 
-```text
-admin:create      admin:read        admin:update      admin:delete
-user:read         user:update       user:delete
-users:read        users:update      users:assign-roles
-roles:create      roles:read        roles:update      roles:delete
-permissions:create  permissions:read  permissions:delete
-audit:read        audit:manage
-```
+* Account events published to **Kafka**, keyed by user ID so each user's events stay in order
+* Pushed to every open browser tab over **Server-Sent Events**
+* Every event is also kept in **Redis** (last 50, 7 days) and replayed when a client reconnects with `Last-Event-ID`
+* Revoked, disabled or deleted users have their SSE streams and WebSocket sessions closed by the server
+* Admin announcements over **STOMP/WebSocket**, fanned out to every service instance through Kafka, with ack and dismiss
+* JWT-authenticated WebSocket handshake, admin-only topics, and expired sessions closed every minute
+* Retries and dead-letter topics for events that keep failing
 
-### Real-time Notifications
+### Gateway security
 
-* `auth-service` publishes account events to **Kafka** after the database transaction commits
-* `notification-service` pushes them to the user over **Server-Sent Events**
-* Events for offline users are buffered in **Redis** (last 50, kept 7 days) and replayed on reconnect
-* Admin announcements over **STOMP/WebSocket**, with ack and dismiss
-* JWT-authenticated WebSocket handshake and per-subscription authorization
-* Dead-letter topic for events that keep failing
-
-### Gateway Security
-
-Requests pass through an **OpenResty/Nginx gateway** before reaching any Spring Boot service.
-
-* TLS termination, with HTTP redirected to HTTPS
-* Let's Encrypt certificates (auto-renewed by `certbot`)
+* TLS termination with HTTP → HTTPS redirect, Let's Encrypt certificates renewed by `certbot`
 * Security headers: HSTS, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`
+* Per-route rate limiting: 3 r/s for login, register and refresh, and 10 r/s for everything else
+* 20 connections per IP
+* Lua request validation (CORS, request ID, `Content-Type`, `Bearer` presence) before requests reach the JVM
 * Self-signed certificate fallback for local development
-* Lua-based request validation
-* Per-route rate limiting
-* Per-IP connection limiting
-* `X-Request-ID` injection for tracing
-* Bad requests rejected before they reach the JVM
-
-Rate-limit strategy:
-
-```text
-/api/v1/auth/login     → strict   (3 r/s per IP, burst 5)
-/api/v1/auth/register  → strict   (3 r/s per IP, burst 5)
-/api/v1/auth/refresh   → strict   (3 r/s per IP, burst 5)
-all other APIs         → relaxed  (10 r/s per IP, burst 20)
-connections            → max 20 per IP
-```
 
 ### Observability
 
-* Correlation ID generated at the gateway and propagated through every log line
-* Structured request logging (`LoggingFilter`, Logback)
-* Spring Boot Actuator with liveness and readiness probes
-* Audit log table for security events
-* Configurable log levels and log output
+* `X-Request-ID` added at the gateway, written to every log line, and carried through Kafka headers into notification-service
+* Structured request logging, Actuator health probes, and an audit log table
 * Kafka UI and a Prometheus Kafka exporter
 
 ### CI/CD & DevSecOps
 
-* Tests and JaCoCo coverage on every PR
-* Trivy filesystem and image scans, failing on fixable CRITICAL vulnerabilities
-* SonarCloud static analysis
-* Images pushed to Amazon ECR, tagged by commit SHA
-* Only changed services are rebuilt
-* Automatic deploy on merge to `main` via AWS SSM
-* Health checks, local and public smoke tests, and **automatic rollback**
+* Tests, JaCoCo, Trivy filesystem and image scans, and SonarCloud on every PR
+* Only changed services are rebuilt. Images are tagged by commit SHA in Amazon ECR.
+* Deploy on merge to `main` via AWS SSM, with health checks, two layers of smoke tests and **automatic rollback**
 
 ---
 
@@ -199,313 +172,645 @@ flowchart LR
 | Reuse unchanged images | App-only changes don't rebuild or restart Kafka and Redis |
 | Health checks + smoke tests before marking a deploy good | A running container isn't proof the service works; failure rolls back automatically |
 | Revert PR instead of auto-revert | Branch protection stays intact; a human decides whether the code was at fault |
-| Docker Compose instead of Kubernetes | Single node — Kubernetes adds cost and complexity with no benefit at this scale |
-| Kafka between auth and notification services | auth-service never waits on notification delivery; events survive a notification-service restart |
-| Events published after the DB commit | No notification is sent for a change that was rolled back |
-| HS512 shared secret for JWTs | Both services verify tokens locally with no call to auth-service; asymmetric keys are listed under future improvements |
+| Docker Compose instead of Kubernetes | Single node: Kubernetes adds cost and complexity with no benefit at this scale |
+| Kafka between auth and notification services | auth-service never waits on notification delivery, and events survive a notification-service restart |
+| Account status events sent after the DB commit | A rolled-back enable or disable never logs a user out |
+| Atomic "revoke if active" update on refresh | Two concurrent refreshes with the same token can't both succeed; the loser is treated as reuse |
+| One Kafka consumer group per instance for announcements | Every instance gets every announcement, so users connected to any instance receive it |
+| HS512 shared secret for JWTs | Both services verify tokens locally with no call to auth-service; asymmetric keys are on the roadmap |
 
-## Request routing (detailed)
+## Gateway request routing
 
-```text
-                                  ┌──────────────────────────────┐
-                                  │       Client / Browser       │
-                                  │          React SPA           │
-                                  └──────────────┬───────────────┘
-                                                 │
-                                                 │ HTTPS
-                                                 ▼
- ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
- │                       OpenResty / Nginx  ·  nginx-gateway  ·  :80 / :443                        │
- │                                                                                                 │
- │  • TLS termination (Let's Encrypt)          • Per-route rate limiting (login 3 r/s, API 10 r/s) │
- │  • Lua request validation                   • Per-IP connection limiting (20 per IP)            │
- │  • X-Request-ID injection                   • CORS policy                                       │
- └──────┬──────────────────────┬──────────────────────────────────────────────────────┬────────────┘
-        │                      │                                                      │
-        │ /client/             │ /api/v1/auth                  /api/v1/notifications  │
-        │                      │ /api/v1/users                     /ws/announcements  │
-        │                      │ /api/v1/admin                                        │
-        │                      │ /health                                              │
-        ▼                      ▼                                                      ▼
- ┌──────────────┐  ┌────────────────────────┐     ┌─────────────────┐     ┌────────────────────────┐
- │client-service│  │      auth-service      │pub  │  Kafka (KRaft)  │ sub │  notification-service  │
- │ React + Vite │  │   Spring Boot :5001    ├────►│     2 nodes     ├────►│   Spring Boot :5002    │
- │ static build │  │  JWT · OAuth2 · RBAC   │     │ account-events  │     │    SSE · STOMP / WS    │
- └──────────────┘  └────┬──────────────┬────┘     └─────────────────┘     └───────────┬────────────┘
-                        │              │                                              │
-                        │ JDBC         │ cache · blacklist                            │ missed events
-                        │              │                                              │
-                        ▼              ▼                                              ▼
-              ┌───────────────────┐  ┌─────────────────────────────────────────────────────────────┐
-              │ PostgreSQL (RDS)  │  │                         Redis :6379                         │
-              │   Flyway V1–V14   │  │ roles cache · JWT blacklist · per-user missed-event buffer  │
-              └───────────────────┘  └─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    browser(["Browser"])
+
+    subgraph p80["server :80"]
+        direction LR
+        acme["/.well-known/acme-challenge/<br/>served from certbot webroot"]
+        redirect["everything else<br/>301 → https"]
+    end
+
+    subgraph p443["server :443 · authvolt.fun"]
+        direction TB
+        tls["TLS termination<br/>Let's Encrypt certificate"]
+        headers["Security headers<br/>HSTS · X-Frame-Options · nosniff<br/>Referrer-Policy · Permissions-Policy"]
+        conn["limit_conn · 20 per IP"]
+        rootloc["location = /<br/>301 → /client/"]
+        clientloc["location /client/"]
+        loginloc["location ~ /api/v1/auth/ login · register · refresh<br/>login_limit 3 r/s · burst 5"]
+        notifloc["location ^~ /api/v1/notifications/<br/>api_limit 10 r/s · burst 20<br/>buffering off · 24 h read timeout"]
+        wsloc["location ^~ /ws/<br/>api_limit · Upgrade: websocket<br/>1 h read timeout"]
+        apiloc["location /api/v1/<br/>api_limit 10 r/s · burst 20"]
+        healthloc["location /health"]
+        lua["Lua validate_request<br/>1 · CORS<br/>2 · add X-Request-ID<br/>3 · missing Content-Type → 415<br/>4 · no Bearer on protected path → 401"]
+        tls --> headers --> conn
+        conn --> rootloc & clientloc & loginloc & notifloc & wsloc & apiloc & healthloc
+        loginloc --> lua
+        apiloc --> lua
+    end
+
+    client["client-service :80"]
+    auth["auth-service :5001"]
+    notif["notification-service :5002"]
+
+    browser -->|"HTTP"| p80
+    browser -->|"HTTPS"| tls
+    clientloc --> client
+    lua --> auth
+    healthloc -->|"/actuator/health"| auth
+    notifloc -->|"SSE"| notif
+    wsloc -->|"STOMP"| notif
 ```
 
-Every box is a separate Docker container, on the `authnet` and `authvolt-kafka-network` Docker networks. Only nginx exposes ports to the internet. PostgreSQL runs on **Amazon RDS**. `auth-service` also calls **Google** to verify ID tokens during Google sign-in.
+Request bodies are capped at 10 MB by `client_max_body_size`.
 
 ## auth-service internals
 
-```text
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│                        auth-service  ·  Spring Boot :5001                        │
-│                                                                                  │
-│  Filters                                                                         │
-│   ├── LoggingFilter               correlation ID, request logging                │
-│   ├── CsrfCookieFilter            XSRF-TOKEN cookie                              │
-│   └── JwtAuthenticationFilter     signature · iss · aud · exp · blacklist        │
-│                                                                                  │
-│  Controllers                                                                     │
-│   ├── AuthController              /api/v1/auth                                   │
-│   ├── OAuth2Controller            /api/v1/auth/oauth2                            │
-│   ├── UserController              /api/v1/users    @PreAuthorize + ownership     │
-│   └── AdminController             /api/v1/admin    @RequiresPermission           │
-│                                                                                  │
-│  Services                                                                        │
-│   ├── AuthService                 login, logout, logout-all                      │
-│   ├── RefreshTokenService         rotation + reuse detection                     │
-│   ├── RefreshTokenFamilyService   family revocation                              │
-│   ├── TokenBlacklistService       Redis blacklist by jti                         │
-│   ├── GoogleOAuth2Service         Google ID-token sign-in                        │
-│   ├── BCryptService               virtual threads + semaphore                    │
-│   ├── UserService · RoleService · PermissionService · AdminService               │
-│   ├── AccountEventProducer        Kafka, published after commit                  │
-│   └── AuditService                security audit log                             │
-│                                                                                  │
-│  Security                                                                        │
-│   ├── JwtService                  issue + parse HS512 tokens                     │
-│   ├── TokenHashService            SHA-256 of refresh-token jti                   │
-│   ├── CookieService               HttpOnly refresh cookie                        │
-│   ├── CustomAuthenticationProvider · CustomUserDetailsService                    │
-│   └── RequiresPermissionAspect    permission checks on admin APIs                │
-│                                                                                  │
-│  Repositories                                                                    │
-│   └── User · Role · Permission · RefreshToken · AuditLog                         │
-└──────────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    req(["Request from nginx"])
+
+    subgraph filters["1 · Filter chain"]
+        direction LR
+        lf["LoggingFilter<br/>X-Request-ID → MDC · request log"]
+        csrf["CsrfFilter + CsrfCookieFilter<br/>enforced on /refresh, /logout, /logout/all"]
+        jf["JwtAuthenticationFilter<br/>HS512 · iss · aud · exp · type = access<br/>Redis blacklist check"]
+        lf --> csrf --> jf
+    end
+
+    subgraph web["2 · Controllers"]
+        direction LR
+        ac["AuthController<br/>/api/v1/auth"]
+        oc["OAuth2Controller<br/>/api/v1/auth/oauth2"]
+        uc["UserController<br/>/api/v1/users<br/>@PreAuthorize + ownership"]
+        adc["AdminController<br/>/api/v1/admin<br/>@RequiresPermission aspect"]
+    end
+
+    subgraph svc["3 · Services"]
+        direction LR
+        subgraph tokensvc["Sessions and tokens"]
+            direction TB
+            as["AuthService<br/>login · logout · logout-all"]
+            rts["RefreshTokenService<br/>rotation · reuse detection"]
+            rfs["RefreshTokenFamilyService<br/>revoke family"]
+            tbs["TokenBlacklistService<br/>jti with TTL"]
+        end
+        subgraph idsvc["Identity and RBAC"]
+            direction TB
+            gs["GoogleOAuth2Service<br/>ID-token sign-in"]
+            us["UserService · AdminService<br/>RoleService · PermissionService"]
+        end
+        subgraph shared["Shared"]
+            direction TB
+            bs["BCryptService<br/>virtual threads · 6 permits · 30 s wait"]
+            aep["AccountEventProducer<br/>key = userId · X-Request-ID header"]
+            aud["AuditService<br/>security audit log"]
+        end
+    end
+
+    subgraph sec["4 · Security helpers"]
+        direction LR
+        cap["CustomAuthenticationProvider<br/>email · username · phone"]
+        js["JwtService<br/>sign + parse HS512"]
+        th["TokenHashService<br/>SHA-256 of jti"]
+        cs["CookieService<br/>HttpOnly · Secure · SameSite"]
+    end
+
+    subgraph repo["5 · Repositories · Spring Data JPA"]
+        direction LR
+        r1["User · Role · Permission"]
+        r2["RefreshToken"]
+        r3["AuditLog"]
+    end
+
+    pg[("PostgreSQL · RDS")]
+    redis[("Redis")]
+    kafka[["Kafka · account-events"]]
+    google(["Google"])
+
+    req --> filters
+    filters --> web
+    web --> svc
+    svc --> sec
+    svc --> repo
+    repo --> pg
+    tbs -->|"blacklist"| redis
+    us -->|"roles cache"| redis
+    aep -->|"publish"| kafka
+    gs -->|"verify ID token"| google
 ```
 
 ## notification-service internals
 
-```text
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│                    notification-service  ·  Spring Boot :5002                    │
-│                                                                                  │
-│  Security                                                                        │
-│   └── OAuth2 resource server       validates auth-service JWTs                   │
-│                                                                                  │
-│  Kafka consumers                                                                 │
-│   ├── AccountEventConsumer         account-events → SSE or Redis buffer          │
-│   └── AnnouncementConsumer         broadcast-announcements → STOMP topic         │
-│                                                                                  │
-│  HTTP                                                                            │
-│   └── NotificationController       GET /api/v1/notifications/stream (SSE)        │
-│                                                                                  │
-│  WebSocket  (STOMP over /ws/announcements)                                       │
-│   ├── JwtHandshakeInterceptor      JWT check on connect                          │
-│   ├── SubscriptionAuthorizationInterceptor   who may subscribe where             │
-│   └── AnnouncementStompController  /app/announcement.send · .ack · .dismiss      │
-│                                                                                  │
-│  Connection management                                                           │
-│   ├── SseConnectionManager · SseHeartbeatScheduler                               │
-│   └── WebSocketSessionManager                                                    │
-└──────────────────────────────────────────────────────────────────────────────────┘
+### SSE side
+
+```mermaid
+flowchart LR
+    browser(["Browser<br/>EventSource"])
+    ae[["Kafka<br/>account-events"]]
+    redis[("Redis<br/>notification:v1:sse:missed:userId")]
+
+    subgraph ns["notification-service · Server-Sent Events"]
+        direction TB
+        sec["Resource server<br/>HS512 · iss · aud<br/>Bearer header or ?token="]
+        nc["NotificationController<br/>GET /api/v1/notifications/stream"]
+        scm["SseConnectionManager<br/>5 streams per user · 1000 total<br/>1 h emitter timeout"]
+        hb["SseHeartbeatScheduler<br/>ping every 30 s"]
+        aec["AccountEventConsumer<br/>group notification-group"]
+        wsm["WebSocketSessionManager"]
+    end
+
+    browser -->|"connect · Last-Event-ID"| sec
+    sec --> nc
+    nc --> scm
+    nc -->|"replay missed events"| redis
+    hb --> scm
+    ae --> aec
+    aec -->|"push to every open stream"| scm
+    aec -->|"RPUSH · LTRIM 50 · EXPIRE 7 d"| redis
+    aec -->|"revoked · disabled · deleted<br/>close SSE + WebSocket after 1 s"| wsm
+    scm -.->|"connected · events · ping"| browser
 ```
+
+### WebSocket side
+
+```mermaid
+flowchart LR
+    browser(["Browser<br/>STOMP client"])
+
+    subgraph ns["notification-service · STOMP over WebSocket"]
+        direction TB
+        hs["JwtHandshakeInterceptor<br/>Origin allow-list · access token only"]
+        hh["StompHandshakeHandler<br/>StompPrincipal: userId, roles, expiresAt"]
+        wsm["WebSocketSessionManager<br/>expired-token sweep every 60 s"]
+        sai["SubscriptionAuthorizationInterceptor<br/>/topic/admin.* needs ADMIN<br/>SEND only to /app/**"]
+        stc["AnnouncementStompController<br/>send · ack · dismiss"]
+        ap["AnnouncementProducer<br/>acks = all · idempotent"]
+        anc["AnnouncementConsumer<br/>own group per instance · 24 h dedup"]
+        broker["Simple broker<br/>/topic · /queue · heartbeat 10 s"]
+    end
+
+    subgraph k["Kafka"]
+        direction TB
+        ar[["admin-responses"]]
+        ba[["broadcast-announcements"]]
+        dlt[["broadcast-announcements.DLT"]]
+    end
+
+    browser -->|"/ws/announcements?token="| hs
+    hs --> hh
+    hh --> wsm
+    browser -->|"SUBSCRIBE · SEND"| sai
+    sai -->|"allowed subscriptions"| broker
+    sai --> stc
+    stc -->|"ack · dismiss"| ar
+    stc -->|"send"| ap
+    ap --> ba
+    stc -->|"confirmations · errors"| broker
+    ba --> anc
+    ar --> anc
+    anc -.->|"after 3 retries"| dlt
+    anc --> broker
+    broker -.->|"/topic/announcements<br/>/topic/admin.responses<br/>/user/queue/*"| browser
+    wsm -.->|"close expired sessions"| browser
+```
+
+## Kafka topology
+
+```mermaid
+flowchart LR
+    subgraph producers["Producers"]
+        direction TB
+        p1["auth-service<br/>AccountEventProducer"]
+        p2["notification-service<br/>AnnouncementProducer"]
+        p3["notification-service<br/>AnnouncementStompController"]
+    end
+
+    subgraph cluster["Kafka · KRaft · 2 brokers · replication factor 2"]
+        direction TB
+        ae[["account-events<br/>3 partitions · 7 days<br/>key = userId"]]
+        ba[["broadcast-announcements<br/>3 partitions · 7 days<br/>key = announcementId"]]
+        ar[["admin-responses<br/>3 partitions · 7 days<br/>key = announcementId"]]
+    end
+
+    subgraph consumers["Consumer groups"]
+        direction TB
+        g1["notification-group<br/>AccountEventConsumer<br/>shared: one instance handles each event"]
+        g2["ws-announcement-uuid<br/>one group per instance<br/>every instance gets every announcement"]
+        g3["ws-admin-responses-uuid<br/>one group per instance"]
+    end
+
+    subgraph dlts["Dead-letter topics"]
+        direction TB
+        aedlt[["account-events.DLT"]]
+        badlt[["broadcast-announcements.DLT"]]
+    end
+
+    p1 -->|"ACCOUNT_DISABLED · ACCOUNT_ENABLED<br/>SESSION_REVOKED · header X-Request-ID"| ae
+    p2 --> ba
+    p3 -->|"USER_RESPONSE"| ar
+    ae --> g1
+    ba --> g2
+    ar --> g3
+    g1 -.->|"failed after retries"| aedlt
+    g2 -.->|"3 retries · 1 s apart"| badlt
+```
+
+The `AccountEvent` contract also defines `ACCOUNT_DELETED`, `PASSWORD_CHANGED` and `ROLE_CHANGED`. notification-service already handles them, but auth-service doesn't publish them yet.
+
+## Data model
+
+```mermaid
+erDiagram
+    USER_TABLE ||--o{ USER_ROLES : "has"
+    ROLE ||--o{ USER_ROLES : "assigned through"
+    ROLE ||--o{ ROLE_PERMISSIONS : "grants"
+    PERMISSIONS ||--o{ ROLE_PERMISSIONS : "granted through"
+    USER_TABLE ||--o{ REFRESH_TOKENS : "owns"
+    USER_TABLE |o--o{ AUDIT_LOGS : "subject of"
+
+    USER_TABLE {
+        BIGINT user_id PK
+        VARCHAR email UK
+        VARCHAR username UK
+        VARCHAR phone_number UK "nullable for Google users"
+        VARCHAR password "BCrypt, null for Google users"
+        VARCHAR name
+        VARCHAR gender
+        VARCHAR image
+        VARCHAR provider "LOCAL or GOOGLE"
+        VARCHAR provider_id "Google subject, unique with provider"
+        BOOLEAN is_enable
+        BOOLEAN profile_complete
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+    ROLE {
+        UUID id PK
+        VARCHAR name UK
+        VARCHAR description
+        BOOLEAN is_system_role
+    }
+    PERMISSIONS {
+        UUID id PK
+        VARCHAR name UK "e.g. users:read"
+        VARCHAR description
+    }
+    USER_ROLES {
+        BIGINT user_id PK, FK
+        UUID role_id PK, FK
+    }
+    ROLE_PERMISSIONS {
+        UUID role_id PK, FK
+        UUID permission_id PK, FK
+    }
+    REFRESH_TOKENS {
+        UUID id PK
+        VARCHAR jti_hash UK "SHA-256 of the token id"
+        BIGINT user_id FK
+        VARCHAR family_id "one login session"
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ expires_at
+        BOOLEAN revoked
+        VARCHAR replace_token "id of the token that replaced it"
+    }
+    AUDIT_LOGS {
+        UUID id PK
+        BIGINT user_id FK "set null on user delete"
+        VARCHAR username
+        VARCHAR event_type "LOGIN_SUCCESS, TOKEN_REUSE, ..."
+        VARCHAR ip_address
+        VARCHAR user_agent
+        TEXT details
+        BOOLEAN success
+        TIMESTAMPTZ timestamp
+    }
+```
+
+The schema is created by Flyway migrations `V1` to `V14`. Hibernate only validates it (`ddl-auto: none`).
 
 ---
 
-# Authentication Flow
+# Authentication flows
 
 ## Login
 
-```text
-Client
-   │
-   │ POST /api/v1/auth/login   { identifier, password }
-   ▼
-OpenResty
-   │
-   │ Validate + Rate Limit (3 r/s)
-   ▼
-auth-service
-   │
-   ├── Detect identifier type (email / username / phone)
-   ├── Verify password (BCrypt on virtual thread, semaphore-limited)
-   ├── Generate access token  (HS512 · iss · aud · roles · permissions)
-   ├── Generate refresh token (new token family)
-   ├── Store SHA-256 hash of the refresh token
-   └── Write LOGIN_SUCCESS audit event
-   │
-   ▼
-Client
-   │
-   ├── Access Token            (response body)
-   ├── HttpOnly Refresh Cookie (path /api/v1/auth)
-   └── XSRF-TOKEN Cookie
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Browser
+    participant N as nginx
+    participant A as auth-service
+    participant P as AuthProvider + BCrypt
+    participant DB as PostgreSQL
+
+    U->>N: POST /api/v1/auth/login (identifier, password)
+    N->>N: rate limit 3 r/s per IP · Lua checks · add X-Request-ID
+    N->>A: forward
+    A->>P: authenticate(identifier, password)
+    P->>DB: find user by email, username or phone
+    alt account disabled or locked
+        P-->>A: DisabledException or LockedException
+    else account active
+        P->>P: wait for one of 6 BCrypt permits (max 30 s)
+        P->>P: BCrypt check on a virtual thread
+    end
+    alt bad credentials, disabled or locked
+        A->>DB: audit LOGIN_FAILURE
+        A-->>U: 401
+    else success
+        A->>A: new token id (jti) and new family id
+        A->>DB: save refresh token (SHA-256 of jti, family, expiry)
+        A->>A: sign access token (HS512 · roles · permissions)
+        A->>DB: audit LOGIN_SUCCESS
+        A-->>U: 200 accessToken + user<br/>Set-Cookie refreshToken (HttpOnly · path /api/v1/auth)<br/>Set-Cookie XSRF-TOKEN · Cache-Control no-store
+    end
 ```
 
-## Refresh Token Rotation
+## Authorizing a request
 
-```text
-POST /api/v1/auth/refresh
-   Cookie: refreshToken=#1
-   Header: X-XSRF-TOKEN
-          │
-          ▼
-   Validate CSRF + JWT
-          │
-          ▼
-   Look up hash of #1
-          │
-          ├── Current → mark #1 used
-          │                │
-          │                └── Generate #2 (same family)
-          │                          │
-          │                          ▼
-          │                  New Access Token
-          │                  New Refresh Cookie
-          │
-          └── Already used → reuse detected (see below)
+```mermaid
+flowchart TD
+    req(["Request with Authorization: Bearer token"]) --> sig{"Signature, issuer,<br/>audience valid?"}
+    sig -- no --> anon["Continue unauthenticated"]
+    sig -- yes --> typ{"type = access<br/>and not expired?"}
+    typ -- no --> anon
+    typ -- yes --> bl{"jti in Redis<br/>blacklist?"}
+    bl -- yes --> revoked["401 Token has been revoked"]
+    bl -- no --> principal["Build JwtPrincipal<br/>userId · roles · permissions as authorities"]
+    anon --> protected{"Endpoint public?"}
+    protected -- no --> unauth["401"]
+    protected -- yes --> handler
+    principal --> which{"Which controller?"}
+    which -- "/api/v1/users" --> pre{"@PreAuthorize<br/>admin permission, or<br/>own permission and id = own userId"}
+    which -- "/api/v1/admin" --> rp{"@RequiresPermission<br/>has every listed permission?"}
+    which -- "/api/v1/auth" --> handler["Controller runs"]
+    pre -- yes --> handler
+    pre -- no --> forbidden["403"]
+    rp -- yes --> handler
+    rp -- no --> forbidden
 ```
 
-If a previously used refresh token is presented again:
+## Refresh token rotation and reuse detection
 
-```text
-Compromised Refresh Token
-          │
-          ▼
-Reuse detected
-          │
-          ├── Write TOKEN_REUSE audit event
-          │
-          ▼
-Revoke entire token family
-          │
-          ▼
-All tokens in the chain become invalid
-(attacker and victim must both log in again)
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Browser
+    participant N as nginx
+    participant A as auth-service
+    participant DB as PostgreSQL
+
+    U->>N: POST /api/v1/auth/refresh<br/>Cookie refreshToken + XSRF-TOKEN · Header X-XSRF-TOKEN
+    N->>A: rate limit 3 r/s · Lua checks
+    A->>A: CSRF check (cookie value = header value)
+    A->>A: verify JWT signature and type = refresh
+    A->>DB: find token by SHA-256(jti)
+    alt not found, or belongs to another user
+        A->>DB: audit TOKEN_REFRESH_FAILURE
+        A-->>U: 401
+    else expired
+        A->>DB: revoke the whole family
+        A-->>U: 401
+    else found and not expired
+        A->>DB: UPDATE revoked = true WHERE jti_hash = ? AND revoked = false
+        alt 0 rows updated: token was already used
+            A->>DB: audit TOKEN_REUSE
+            A->>DB: revoke the whole family
+            A-->>U: 401 (attacker and victim must both log in again)
+        else 1 row updated
+            A->>DB: load user with roles and permissions
+            alt disabled, locked or credentials expired
+                A->>DB: revoke the whole family
+                A-->>U: 401
+            else active
+                A->>DB: save new refresh token in the same family
+                A-->>U: 200 new accessToken<br/>Set-Cookie new refreshToken
+            end
+        end
+    end
 ```
 
-This stops an attacker from continuing to use a stolen refresh-token chain.
+## Logout and logout from all devices
 
-## Logout
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Browser
+    participant A as auth-service
+    participant DB as PostgreSQL
+    participant R as Redis
+    participant K as Kafka
+    participant NS as notification-service
 
-```text
-POST /logout        (refresh cookie)       POST /logout/all     (Bearer)
-       │                                          │
-       ▼                                          ▼
-Revoke current token family               Revoke ALL refresh tokens of user
-       │                                          │
-       └──────────────────┬───────────────────────┘
-                          ▼
-         Blacklist current access token in Redis
-         (TTL = token's remaining lifetime)
-                          │
-                          ▼
-                Clear refresh cookie
+    alt POST /api/v1/auth/logout (refresh cookie + CSRF)
+        U->>A: logout
+        A->>DB: find token by SHA-256(jti), revoke its family
+    else POST /api/v1/auth/logout/all (Bearer + CSRF)
+        U->>A: logout from all devices
+        A->>DB: revoke every refresh token of the user
+    end
+    A->>R: blacklist current access token jti (TTL = its remaining lifetime)
+    A->>A: clear refreshToken cookie
+    A->>DB: audit LOGOUT
+    A->>K: SESSION_REVOKED (key = userId)
+    A-->>U: 204
+    K->>NS: AccountEventConsumer
+    NS-->>U: SSE event SESSION_REVOKED on every open tab
+    NS->>NS: after 1 s close the user's SSE streams and WebSocket sessions
 ```
 
-## Google Sign-in
+## Google sign-in
 
-```text
-Client ── Google ID token ──► POST /api/v1/auth/oauth2/google
-                                        │
-                                        ▼
-                           Verify token with Google
-                                        │
-                        ┌───────────────┴───────────────┐
-                        ▼                               ▼
-                 Existing user                      New user
-                        │                               │
-                        │                 Create account (provider = GOOGLE)
-                        │                               │
-                        │                               ▼
-                        │              PATCH /oauth2/complete-profile
-                        │                               │
-                        └───────────────┬───────────────┘
-                                        ▼
-                         Access Token + Refresh Cookie
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Browser
+    participant G as Google
+    participant A as auth-service
+    participant DB as PostgreSQL
+
+    U->>G: Sign in with Google
+    G-->>U: ID token
+    U->>A: POST /api/v1/auth/oauth2/google (ID token)
+    A->>G: verify signature, audience = GOOGLE_CLIENT_ID
+    alt email not verified by Google
+        A-->>U: rejected
+    end
+    A->>DB: find user by (GOOGLE, Google subject)
+    alt existing Google user
+        Note over A: continue
+    else a LOCAL account already uses this email
+        A-->>U: rejected: sign in with password (no silent account linking)
+    else new user
+        A->>DB: create user (provider GOOGLE, profile_complete = false)
+    end
+    alt account disabled
+        A-->>U: rejected
+    else active
+        A->>DB: new refresh token family · audit LOGIN_SUCCESS
+        A-->>U: accessToken + refresh cookie + profileComplete flag
+    end
+    opt profileComplete = false
+        U->>A: PATCH /api/v1/auth/oauth2/complete-profile (Bearer)
+        A->>DB: save phone, gender, optional username · profile_complete = true
+    end
 ```
 
 ---
 
-# Real-time Notification Flow
+# Real-time notifications
 
-```text
-Admin disables a user
-        │
-        ▼
-auth-service ── commit DB transaction
-        │
-        │ afterCommit → publish AccountEvent (ACCOUNT_DISABLED)
-        ▼
-Kafka topic: account-events
-        │
-        ▼
-notification-service (AccountEventConsumer)
-        │
-        ├── User online  → push over SSE  (GET /api/v1/notifications/stream)
-        │
-        └── User offline → store in Redis buffer (last 50, 7 days)
-                                  │
-                                  ▼
-                       Replayed when the user reconnects
+## SSE connection
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Browser (EventSource)
+    participant N as nginx
+    participant NS as notification-service
+    participant R as Redis
+
+    U->>N: GET /api/v1/notifications/stream?token=access-token<br/>(Last-Event-ID on reconnect)
+    N->>NS: rate limit 10 r/s · buffering off · 24 h timeout
+    NS->>NS: validate JWT (HS512 · issuer · audience)
+    alt more than 5 streams for this user, or 1000 in total
+        NS-->>U: stream closed with an error
+    else accepted
+        NS-->>U: event connected
+        opt Last-Event-ID present
+            NS->>R: LRANGE notification:v1:sse:missed:userId
+            NS-->>U: replay every event after Last-Event-ID
+        end
+        loop every 30 s
+            NS-->>U: event ping
+        end
+    end
 ```
 
-Account event types:
+## Account event pipeline
 
-```text
-ACCOUNT_DISABLED   ACCOUNT_ENABLED   ACCOUNT_DELETED
-PASSWORD_CHANGED   ROLE_CHANGED      SESSION_REVOKED
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Admin
+    participant A as auth-service
+    participant DB as PostgreSQL
+    participant K as Kafka (account-events)
+    participant NS as notification-service
+    participant R as Redis
+    actor U as User's browser
+
+    Admin->>A: PUT /api/v1/admin/users/42/status (enabled = false)
+    A->>DB: is_enable = false · revoke all refresh tokens
+    A->>DB: COMMIT
+    A->>K: after commit: ACCOUNT_DISABLED (key = 42, header X-Request-ID)
+    K->>NS: AccountEventConsumer (group notification-group)
+    NS->>NS: put X-Request-ID into the log context
+    NS-->>U: SSE event ACCOUNT_DISABLED to every open stream
+    NS->>R: RPUSH event · LTRIM to last 50 · EXPIRE 7 days
+    NS->>NS: after 1 s close the user's SSE streams and WebSocket sessions
 ```
 
-Admin announcements:
+## WebSocket session lifecycle
 
-```text
-Admin ── STOMP SEND /app/announcement.send ──► notification-service
-                                                     │
-                                                     ▼
-                                    Kafka topic: broadcast-announcements
-                                                     │
-                                                     ▼
-                              every notification-service instance consumes
-                                                     │
-                                                     ▼
-                         Clients subscribed to /topic/announcements
-                                                     │
-                              ack / dismiss ──► admin-responses topic ──► Admin
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Browser (STOMP.js)
+    participant N as nginx
+    participant H as Handshake interceptor
+    participant I as Subscription interceptor
+    participant B as Simple broker
+    participant M as WebSocketSessionManager
+
+    U->>N: GET /ws/announcements?token=access-token (Upgrade: websocket)
+    N->>H: proxy upgrade · 1 h timeout
+    H->>H: check Origin against allow-list
+    H->>H: decode JWT · require type = access
+    alt missing or invalid token
+        H-->>U: handshake rejected
+    else valid
+        H->>M: register session · StompPrincipal(userId, roles, expiresAt)
+        U->>B: STOMP CONNECT · heart-beat 10 s
+        U->>I: SUBSCRIBE /topic/announcements
+        I->>B: allowed for every user
+        U->>I: SUBSCRIBE /topic/admin.responses
+        alt user is ADMIN
+            I->>B: allowed
+        else
+            I-->>U: ERROR access denied
+        end
+        U->>I: SEND to /app/... (any other destination is rejected)
+    end
+    loop every 60 s
+        M->>M: close sessions whose access token has expired
+    end
+    Note over U,M: idle timeout 5 min · max frame 16 KB · one writer per session
+```
+
+## Admin announcements
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Admin as Admin (STOMP)
+    participant C as AnnouncementStompController
+    participant K1 as Kafka broadcast-announcements
+    participant NS as Every notification-service instance
+    participant B as Broker
+    actor Users as Subscribed users
+    participant K2 as Kafka admin-responses
+
+    Admin->>C: SEND /app/announcement.send (title, message, priority)
+    alt not ADMIN, or title over 100 or message over 2000 chars
+        C-->>Admin: /user/queue/errors
+    else valid
+        C->>K1: publish (key = announcementId · acks = all · idempotent)
+        K1->>NS: AnnouncementConsumer (own consumer group per instance)
+        NS->>NS: skip if this announcementId was seen in the last 24 h
+        NS->>B: /topic/announcements
+        B-->>Users: ANNOUNCEMENT
+    end
+    Users->>C: SEND /app/announcement.ack or /app/announcement.dismiss
+    C-->>Users: /user/queue/confirmations
+    C->>K2: USER_RESPONSE (userId, ACK or DISMISS)
+    K2->>NS: admin-response listener
+    NS->>B: /topic/admin.responses
+    B-->>Admin: who acknowledged or dismissed
+    Note over K1,NS: processing fails → retried 3 times, 1 s apart → broadcast-announcements.DLT
 ```
 
 ---
 
-# RBAC Architecture
+# RBAC
 
-Authorization is based on:
-
-```text
-User
-  │
-  └── Roles
-        │
-        └── Permissions
+```mermaid
+flowchart LR
+    user(["User"]) -->|"user_roles"| roles
+    subgraph roles["Roles"]
+        direction TB
+        admin["ADMIN<br/>system role"]
+        usr["USER<br/>system role"]
+        custom["Custom roles<br/>created at runtime"]
+    end
+    subgraph perms["Permissions"]
+        direction TB
+        pa["admin:create · admin:read<br/>admin:update · admin:delete"]
+        pu["user:read · user:update · user:delete"]
+        pus["users:read · users:update · users:assign-roles"]
+        pr["roles:create · roles:read<br/>roles:update · roles:delete"]
+        pp["permissions:create · permissions:read<br/>permissions:delete"]
+        pau["audit:read · audit:manage"]
+    end
+    admin -->|"every permission"| perms
+    usr -->|"own account only"| pu
+    custom -.->|"any subset"| perms
+    perms -->|"copied into the access token"| jwt["JWT claims<br/>roles · permissions"]
 ```
 
-Example:
-
-```text
-Admin User
-    │
-    └── ADMIN
-          ├── admin:create
-          ├── admin:read
-          ├── admin:update
-          ├── admin:delete
-          ├── roles:* / permissions:*
-          └── users:read / users:update / users:assign-roles
-```
-
-Roles and permissions are carried in the access token, so authorization doesn't need a database lookup per request. Role lookups that do hit the database are cached in Redis and evicted whenever a role changes.
-
-User endpoints use `@PreAuthorize` with ownership checks:
+User endpoints combine a permission with an ownership rule:
 
 ```java
 @PutMapping("/{id}")
@@ -522,174 +827,74 @@ Admin endpoints use a custom aspect:
 public ResponseEntity<PagedResponse<CreateUserResponseDTO>> getAllUsers(...) { ... }
 ```
 
-Ownership rules:
-
-```text
-Admin
- └── Can read, update and delete any user
-
-Normal User
- ├── Can read, update and delete only their own account
- └── Can change only their own password
-```
+Role lookups are cached in Redis (`auth:roles::*`) and evicted whenever a role or its permissions change. Permission changes take effect on the user's next token refresh.
 
 ---
 
-# Tech Stack
+# Tech stack
 
-## Backend
-
-* Java 21 (virtual threads)
-* Spring Boot 4.1
-* Spring Security
-* Spring Data JPA / Hibernate
-* Spring Kafka
-* Spring WebSocket (STOMP)
-* Maven
-
-## Database & Cache
-
-* PostgreSQL (Amazon RDS)
-* HikariCP
-* Flyway
-* Redis
-
-## Messaging
-
-* Apache Kafka (KRaft mode, 2 nodes, no ZooKeeper)
-* Kafka UI
-* Kafka Prometheus exporter
-
-## Security
-
-* JWT (JJWT, HS512)
-* Access + Refresh Tokens
-* Refresh Token Rotation
-* Token Family Revocation
-* HTTP-only Cookies + CSRF
-* Google OAuth2
-* RBAC
-* Fine-grained Permissions
-
-## Gateway
-
-* OpenResty
-* Nginx
-* Lua
-* Let's Encrypt
-* TLS
-
-## Frontend
-
-* React 19
-* Vite
-* React Router
-* STOMP.js
-
-## Infrastructure
-
-* Docker
-* Docker Compose
-* AWS EC2
-* AWS RDS
-* Amazon ECR
-* AWS Systems Manager (SSM)
-* Linux
-
-## CI/CD & Quality
-
-* GitHub Actions
-* JaCoCo
-* SonarCloud
-* Trivy
-
-## Testing
-
-* JUnit 5
-* Spring Boot Test
-* Integration tests (H2)
-* Vitest + Testing Library
-* k6 load tests
+| Area | Technology |
+|---|---|
+| Backend | Java 21 (virtual threads), Spring Boot 4.1, Spring Security, Spring Data JPA / Hibernate, Spring Kafka, Spring WebSocket (STOMP), Maven |
+| Database & cache | PostgreSQL (Amazon RDS), HikariCP, Flyway, Redis |
+| Messaging | Apache Kafka (KRaft, 2 nodes), Kafka UI, Prometheus Kafka exporter |
+| Security | JJWT (HS512), BCrypt, HTTP-only cookies + CSRF, Google OAuth2, RBAC |
+| Gateway | OpenResty, Nginx, Lua, Let's Encrypt |
+| Frontend | React 19, Vite, React Router, STOMP.js |
+| Infrastructure | Docker, Docker Compose, AWS EC2, Amazon RDS, Amazon ECR, AWS SSM |
+| CI/CD & quality | GitHub Actions, JaCoCo, SonarCloud, Trivy |
+| Testing | JUnit 5, Spring Boot Test, H2 integration tests, Vitest + Testing Library, k6 |
 
 ---
 
-# Project Structure
+# Project structure
 
 ```text
 AuthService/
-│
 ├── auth-service/                 # Authentication & authorization API
-│   ├── src/
-│   │   ├── main/
-│   │   │   ├── java/com/lodhi/auth/
-│   │   │   │   ├── audit/          # Audit events and log
-│   │   │   │   ├── config/         # Security, Kafka, Redis, BCrypt executor
-│   │   │   │   ├── controllers/    # Auth, OAuth2, User, Admin
-│   │   │   │   ├── filters/        # LoggingFilter
-│   │   │   │   ├── security/       # JWT, cookies, @RequiresPermission
-│   │   │   │   ├── services/       # Business logic
-│   │   │   │   └── respositories/  # Spring Data repositories
-│   │   │   └── resources/
-│   │   │       ├── application.yml
-│   │   │       └── db/migration/   # Flyway V1–V14
-│   │   └── test/
-│   ├── Dockerfile
-│   ├── docker-compose.yml
-│   └── .env.example
-│
-├── notification-service/         # Kafka consumer, SSE + STOMP push
+│   ├── src/main/java/com/lodhi/auth/
+│   │   ├── audit/                # Audit events and log
+│   │   ├── config/               # Security, Kafka, Redis, BCrypt executor
+│   │   ├── controllers/          # Auth, OAuth2, User, Admin
+│   │   ├── filters/              # LoggingFilter
+│   │   ├── security/             # JWT, cookies, @RequiresPermission
+│   │   ├── services/             # Business logic
+│   │   └── respositories/        # Spring Data repositories
+│   ├── src/main/resources/
+│   │   ├── application.yml
+│   │   └── db/migration/         # Flyway V1–V14
+│   ├── Dockerfile · docker-compose.yml · .env.example
+├── notification-service/         # Kafka consumers, SSE + STOMP push
 ├── notification-contract/        # Shared Kafka event classes
 ├── client/                       # React + Vite frontend
-│
-├── nginx/                        # OpenResty gateway
-│   ├── nginx.conf
-│   ├── conf.d/                   # Routing, rate limits, upstreams
-│   ├── lua/                      # Request validation
-│   └── Dockerfile
-│
-├── kafka/                        # 2-node KRaft cluster
+├── nginx/                        # OpenResty gateway: conf.d/, lua/, ssl/
+├── kafka/                        # 2-node KRaft cluster, UI, exporter
 ├── redis/                        # Redis config and persistence
 ├── loadtest/                     # k6 scripts and results
-│
 ├── .github/
 │   ├── workflows/ecr-push.yml    # CI/CD pipeline
-│   └── scripts/                  # SSM deploy + smoke test
-│
+│   └── scripts/                  # SSM runner + public smoke test
 ├── CHANGELOG.md
 └── README.md
 ```
 
 ---
 
-# API Endpoints
+# API endpoints
 
-## Authentication
-
-Base URL:
-
-```text
-/api/v1/auth
-```
+## Authentication: `/api/v1/auth`
 
 | Method | Endpoint | Description | Authentication |
 | ------ | -------- | ----------- | -------------- |
 | `POST` | `/register` | Register user | Public |
 | `POST` | `/login` | Login with email, username or phone | Public |
 | `POST` | `/refresh` | Rotate refresh token | Refresh cookie + `X-XSRF-TOKEN` |
-| `POST` | `/logout` | Revoke current session | Refresh cookie |
-| `POST` | `/logout/all` | Revoke all user sessions | Bearer token |
+| `POST` | `/logout` | Revoke current session | Refresh cookie + `X-XSRF-TOKEN` |
+| `POST` | `/logout/all` | Revoke all user sessions | Bearer + `X-XSRF-TOKEN` |
 | `POST` | `/oauth2/google` | Sign in with Google | Public |
-| `PATCH` | `/oauth2/complete-profile` | Finish Google sign-up | Bearer token |
+| `PATCH` | `/oauth2/complete-profile` | Finish Google sign-up | Bearer |
 
----
-
-## Users
-
-Base URL:
-
-```text
-/api/v1/users
-```
+## Users: `/api/v1/users`
 
 | Method | Endpoint | Description | Authorization |
 | ------ | -------- | ----------- | ------------- |
@@ -700,15 +905,7 @@ Base URL:
 | `DELETE` | `/{id}` | Delete user | `admin:delete` or owner |
 | `POST` | `/{id}/change-password` | Change password | Owner only |
 
----
-
-## Administration
-
-Base URL:
-
-```text
-/api/v1/admin
-```
+## Administration: `/api/v1/admin`
 
 | Method | Endpoint | Description | Permission |
 | ------ | -------- | ----------- | ---------- |
@@ -724,34 +921,23 @@ Base URL:
 | `PUT` | `/users/{userId}/roles` | Assign roles | `users:assign-roles` |
 | `PUT` | `/users/{userId}/status` | Enable / disable user | `users:update` |
 
----
-
 ## Notifications
 
 | Type | Endpoint | Description |
 | ---- | -------- | ----------- |
-| SSE | `GET /api/v1/notifications/stream` | Live account events for the logged-in user |
-| STOMP | `/ws/announcements` | WebSocket endpoint |
+| SSE | `GET /api/v1/notifications/stream` | Live account events (`?token=` or Bearer, `Last-Event-ID` to resume) |
+| WebSocket | `/ws/announcements?token=` | STOMP endpoint |
 | STOMP | `SUBSCRIBE /topic/announcements` | Receive announcements |
+| STOMP | `SUBSCRIBE /topic/admin.responses` | Ack and dismiss responses (admin only) |
+| STOMP | `SUBSCRIBE /user/queue/confirmations` · `/user/queue/errors` | Personal confirmations and errors |
 | STOMP | `SEND /app/announcement.send` | Broadcast an announcement (admin) |
-| STOMP | `SEND /app/announcement.ack` · `.dismiss` | Acknowledge or dismiss |
+| STOMP | `SEND /app/announcement.ack` · `/app/announcement.dismiss` | Acknowledge or dismiss |
 
 ---
 
-## Kafka Topics
+# Environment configuration
 
-| Topic | Producer | Consumer | Purpose |
-| ----- | -------- | -------- | ------- |
-| `account-events` | auth-service | notification-service | Account status, role, password and session changes |
-| `account-events.DLT` | Spring Kafka | – | Dead-letter topic |
-| `broadcast-announcements` | notification-service | all notification-service instances | Admin announcements |
-| `admin-responses` | notification-service | notification-service | Ack and dismiss responses back to the admin |
-
----
-
-# Environment Configuration
-
-Copy the example environment file:
+Copy the example file. notification-service reads the same file, so both services share the JWT secret, issuer and audience.
 
 ```bash
 cp auth-service/.env.example auth-service/.env
@@ -759,416 +945,164 @@ cp auth-service/.env.example auth-service/.env
 
 Never commit `.env` or any file containing real secrets.
 
-### Database
-
-```text
-DB_HOST
-DB_PORT
-DB_NAME
-DB_USERNAME
-DB_PASSWORD
-```
-
-### Admin Bootstrap
-
-```text
-ADMIN_EMAIL
-ADMIN_USERNAME
-ADMIN_PASSWORD
-ADMIN_PHONE
-```
-
-### JWT
-
-```text
-JWT_SECRET
-JWT_ISSUER
-JWT_AUDIENCE
-JWT_ACCESS_TTL_SECOND
-JWT_REFRESH_TTL_SECOND
-```
-
-### Refresh Cookie
-
-```text
-JWT_REFRESH_TOKEN_COOKIE_NAME
-JWT_COOKIE_HTTP_ONLY
-JWT_COOKIE_SECURE
-JWT_COOKIE_SAME_SITE
-JWT_COOKIE_DOMAIN
-JWT_COOKIE_PATH
-```
-
-### Google OAuth2
-
-```text
-GOOGLE_CLIENT_ID
-```
-
-### Redis
-
-```text
-REDIS_HOST
-REDIS_PORT
-REDIS_PASSWORD
-CACHE_TTL
-```
-
-### Kafka
-
-```text
-KAFKA_BOOTSTRAP_SERVERS
-KAFKA_TOPIC_REPLICATION_FACTOR
-```
-
-### HikariCP
-
-```text
-HIKARI_MAX_POOL_SIZE
-HIKARI_MIN_IDLE
-HIKARI_CONNECTION_TIMEOUT
-HIKARI_IDLE_TIMEOUT
-HIKARI_MAX_LIFETIME
-HIKARI_LEAK_DETECTION_THRESHOLD
-```
-
-### Application
-
-```text
-SERVER_PORT
-SERVER_CONNECTION_TIMEOUT
-QUERY_TIMEOUT
-LOCK_TIMEOUT
-BCRYPT_MAX_CONCURRENT
-```
-
-### Logging / Actuator
-
-```text
-LOG_LEVEL_*
-LOG_FILE
-ACTUATOR_ENDPOINTS
-ACTUATOR_HEALTH_SHOW_DETAILS
-```
-
-### Frontend (build time)
-
-```text
-VITE_API_URL
-VITE_GOOGLE_CLIENT_ID
-```
-
-Development-only settings:
-
-```text
-JPA_SHOW_SQL
-JPA_FORMAT_SQL
-```
+| Group | Variables |
+|---|---|
+| Database | `DB_HOST` `DB_PORT` `DB_NAME` `DB_USERNAME` `DB_PASSWORD` |
+| Admin bootstrap | `ADMIN_EMAIL` `ADMIN_USERNAME` `ADMIN_PASSWORD` `ADMIN_PHONE` |
+| JWT | `JWT_SECRET` (≥ 64 bytes) `JWT_ISSUER` `JWT_AUDIENCE` `JWT_ACCESS_TTL_SECOND` `JWT_REFRESH_TTL_SECOND` |
+| Refresh cookie | `JWT_REFRESH_TOKEN_COOKIE_NAME` `JWT_COOKIE_HTTP_ONLY` `JWT_COOKIE_SECURE` `JWT_COOKIE_SAME_SITE` `JWT_COOKIE_DOMAIN` `JWT_COOKIE_PATH` |
+| Google | `GOOGLE_CLIENT_ID` |
+| Redis | `REDIS_HOST` `REDIS_PORT` `REDIS_PASSWORD` `CACHE_TTL` |
+| Kafka | `KAFKA_BOOTSTRAP_SERVERS` `KAFKA_TOPIC_REPLICATION_FACTOR` |
+| HikariCP | `HIKARI_MAX_POOL_SIZE` `HIKARI_MIN_IDLE` `HIKARI_CONNECTION_TIMEOUT` `HIKARI_IDLE_TIMEOUT` `HIKARI_MAX_LIFETIME` `HIKARI_LEAK_DETECTION_THRESHOLD` |
+| Application | `SERVER_PORT` `SERVER_CONNECTION_TIMEOUT` `QUERY_TIMEOUT` `LOCK_TIMEOUT` `BCRYPT_MAX_CONCURRENT` |
+| notification-service | `CORS_ALLOWED_ORIGINS` `WEBSOCKET_ALLOWED_ORIGINS` |
+| Logging / Actuator | `LOG_LEVEL_*` `LOG_FILE` `ACTUATOR_ENDPOINTS` `ACTUATOR_HEALTH_SHOW_DETAILS` |
+| Frontend (build time) | `VITE_API_URL` `VITE_GOOGLE_CLIENT_ID` |
+| Development only | `JPA_SHOW_SQL` `JPA_FORMAT_SQL` |
 
 ---
 
-# Running Locally
+# Running locally
 
-## Prerequisites
-
-Make sure you have:
-
-* Java 21
-* Maven 3.9+
-* Docker
-* Docker Compose
-* Node.js 20
-* PostgreSQL 15+
-
-Clone the repository:
+**Prerequisites:** Java 21, Maven 3.9+, Docker with Compose, Node.js 20, PostgreSQL 15+.
 
 ```bash
 git clone https://github.com/lodhiPlayBits/AuthService.git
 cd AuthService
-```
 
-Create the shared Docker network:
-
-```bash
+# 1. Shared Docker network
 docker network create authnet
-```
 
-Start Redis and Kafka:
-
-```bash
+# 2. Redis and Kafka (Kafka creates authvolt-kafka-network)
 (cd redis && docker compose up -d)
 (cd kafka && docker compose up -d)
-```
 
-Install the shared event contract (both services depend on it):
-
-```bash
+# 3. Shared event contract (both services depend on it)
 mvn -f notification-contract/pom.xml -DskipTests install
-```
 
-Configure the environment. `notification-service` reads the same file, so both services share the JWT secret, issuer and audience:
-
-```bash
+# 4. Configuration
 cp auth-service/.env.example auth-service/.env     # fill in the values
-```
 
-Build the jars, then start the services:
-
-```bash
+# 5. Build the jars, then start the services
 mvn -f auth-service/pom.xml -DskipTests package
 mvn -f notification-service/pom.xml -DskipTests package
-
 (cd auth-service && docker compose --env-file .env up -d --build)
 (cd notification-service && docker compose up -d --build)
+
+# 6. Frontend
+cd client && npm ci && npm run dev
 ```
 
-Start the frontend:
-
-```bash
-cd client
-npm ci
-npm run dev
-```
-
-Check running containers:
-
-```bash
-docker ps
-```
-
-View logs:
-
-```bash
-docker logs -f auth-service
-```
-
-Flyway creates the database schema on first start.
+Flyway creates the database schema on first start. Check containers with `docker ps` and logs with `docker logs -f auth-service`.
 
 ---
 
 # Testing
 
-Run the backend test suites:
-
 ```bash
-mvn -f auth-service/pom.xml clean verify
+mvn -f auth-service/pom.xml clean verify          # report: auth-service/target/site/jacoco/index.html
 mvn -f notification-service/pom.xml clean verify
+(cd client && npm test)
 ```
 
-Open the JaCoCo coverage report:
-
-```text
-auth-service/target/site/jacoco/index.html
-```
-
-Run the frontend tests:
-
-```bash
-cd client && npm test
-```
-
-The test suite includes:
-
-* Unit tests
-* Spring application-context tests
-* Controller, filter and security tests
-* Repository and integration tests
-* Frontend component tests
+The suites cover unit tests, Spring context tests, controller, filter and security tests, repository and integration tests (H2), and frontend component tests.
 
 Load tests live in [`loadtest/`](loadtest). Moving BCrypt onto virtual threads behind a semaphore gave **+28% throughput, −29% p95 login latency and zero timeouts** at 40 RPS on a 2-vCPU t3.large.
 
 ---
 
-# CI/CD Pipeline
+# Deployment
 
-Everything runs from [`.github/workflows/ecr-push.yml`](.github/workflows/ecr-push.yml).
+## deploy.sh on the EC2 host
 
-```text
-Pull Request / Push
-        │
-        ├── test     (auth-service · notification-service · client) + JaCoCo
-        ├── scan     Trivy filesystem scan (6 components)
-        └── sonar    SonarCloud analysis
-        │
-        ▼
-build-push
-        │
-        ├── Changed service   → build image → Trivy image scan → push to ECR
-        └── Unchanged service → retag previous image in ECR (no rebuild)
-        │
-        ▼
-ci-passed  (single required check)
-        │
-        │  main branch only
-        ▼
-deploy  ── AWS SSM ──► deploy.sh on EC2
-                          │
-                          ├── docker compose pull + up
-                          ├── wait until all containers are healthy
-                          ├── local smoke test
-                          └── on failure → redeploy last good tag
-        │
-        ▼
-smoke-test  (from the public internet: DNS → TLS → nginx → services)
-        │
-        └── on failure → rollback
-                            ├── redeploy previous commit via SSM
-                            └── open a revert PR for review
+```mermaid
+flowchart TD
+    start(["SSM runs deploy.sh with the commit SHA"]) --> login["docker login to ECR<br/>instance role, no stored keys"]
+    login --> order["Pull and start images, in order<br/>redis → kafka → auth-service →<br/>notification-service → client → nginx"]
+    order --> healthy{"Every container healthy<br/>within 300 s?"}
+    healthy -- yes --> smoke{"Smoke tests pass?<br/>/health reports UP · bad login → 401<br/>stream without token → 401<br/>/client/ → 200 · bundle uses prod API URL"}
+    healthy -- no --> failed["Deploy failed"]
+    smoke -- yes --> good["Record SHA as last good tag"]
+    good --> ok(["exit 0 · pipeline continues to public smoke test"])
+    smoke -- no --> failed
+    failed --> prev{"Last good tag<br/>recorded?"}
+    prev -- no --> manual(["exit 1 · manual action needed"])
+    prev -- yes --> rollback["Redeploy last good tag<br/>same health and smoke checks"]
+    rollback --> rbok{"Rollback healthy?"}
+    rbok -- yes --> red(["exit 1 · site runs previous version · pipeline red"])
+    rbok -- no --> manual
 ```
+
+## Pipeline triggers
 
 | Event | What runs |
 | ----- | --------- |
 | Pull request | Tests, scans, Sonar, image build (no push) |
 | Push to `develop` | Everything above + push images to ECR |
-| Push to `main` | Everything above + deploy + smoke test (+ rollback) |
+| Push to `main` | Everything above + deploy + public smoke test (+ rollback and revert PR on failure) |
 
-`main` and `develop` are protected. Every change goes through a pull request.
-
----
-
-# Production Deployment
-
-```text
-Internet
-   │
-   ▼
-AWS EC2 (t3.large, Docker Compose)
-   │
-   ├── OpenResty / Nginx
-   │       ├── TLS (Let's Encrypt)
-   │       ├── Rate Limiting
-   │       └── Request Validation
-   │
-   ├── client-service
-   ├── auth-service ──────────┐
-   ├── notification-service   │
-   ├── Redis                  │
-   └── Kafka (2 nodes)        │
-                              ▼
-                          AWS RDS
-                         PostgreSQL
-
-Images:   Amazon ECR (tagged by commit SHA)
-Deploys:  GitHub Actions → AWS SSM → deploy.sh
-```
-
-Production configuration uses environment variables for:
-
-* Database credentials
-* JWT signing secret
-* Admin credentials
-* Google client ID
-* Cookie configuration
-* Connection pool configuration
-* Logging configuration
-
-Do **not** hardcode secrets into Java source code, Dockerfiles, Git history, or configuration files committed to the repository.
+`main` and `develop` are protected, so every change goes through a pull request. Production configuration comes from environment variables. Never hardcode secrets in source code, Dockerfiles, Git history or committed configuration.
 
 ---
 
-# Security Considerations
+# Security considerations
 
-This project deliberately places security controls at several layers.
-
-### Gateway
-
-```text
-TLS
- ↓
-Request Validation (Lua)
- ↓
-Rate Limiting
- ↓
-Connection Limiting
+```mermaid
+flowchart TB
+    subgraph edge["1 · Edge: nginx"]
+        direction LR
+        e1["TLS · HSTS<br/>security headers"] --> e2["Rate limits<br/>20 connections per IP"] --> e3["Lua checks<br/>Content-Type · Bearer present"]
+    end
+    subgraph app["2 · Application: Spring Security"]
+        direction LR
+        a1["JWT checks<br/>HS512 · iss · aud · exp · type"] --> a2["Redis blacklist"] --> a3["CSRF on<br/>cookie endpoints"] --> a4["Permissions<br/>and ownership"] --> a5["Audit log"]
+    end
+    subgraph tokens["3 · Tokens"]
+        direction LR
+        t1["Short-lived<br/>access token"] --> t2["Rotating refresh token<br/>hashed at rest"] --> t3["Reuse →<br/>family revoked"] --> t4["Logout → blacklist<br/>+ sessions closed"]
+    end
+    subgraph data["4 · Data"]
+        direction LR
+        d1["Hikari pool limits"] --> d2["Query timeout 10 s<br/>lock timeout 5 s"] --> d3["Flyway-validated<br/>schema"]
+    end
+    subgraph supply["5 · Supply chain"]
+        direction LR
+        s1["Trivy filesystem<br/>and image scans"] --> s2["SonarCloud"] --> s3["PR-only branches<br/>OIDC · SSM, no SSH"]
+    end
+    edge --> app --> tokens --> data
+    data ~~~ supply
 ```
 
-### Application
-
-```text
-Authentication
- ↓
-JWT Validation (signature · iss · aud · exp · blacklist)
- ↓
-CSRF check (cookie endpoints)
- ↓
-Authorization (permissions)
- ↓
-Ownership Checks
- ↓
-Audit Log
-```
-
-### Tokens
-
-```text
-Short-lived access token
- ↓
-Rotating refresh token (hashed at rest)
- ↓
-Reuse detection → family revocation
- ↓
-Redis blacklist on logout
-```
-
-### Database
-
-```text
-Connection Pool Limits
- ↓
-Query Timeout
- ↓
-Lock Timeout
- ↓
-PostgreSQL
-```
-
-### Supply Chain
-
-```text
-Trivy filesystem scan
- ↓
-Trivy image scan
- ↓
-SonarCloud
- ↓
-Protected branches + PR-only changes
-```
-
-No single security mechanism is expected to protect the entire system.
+No single control is expected to protect the whole system.
 
 ---
 
-# Design Goals
+# Design goals
 
-The main goals of this project are:
-
-* Secure authentication
-* Fine-grained authorization
-* Stateless access-token authentication
-* Stateful refresh-token management
+* Secure authentication and fine-grained authorization
+* Stateless access tokens, stateful and revocable refresh tokens
 * Refresh-token compromise detection
 * Defense in depth at the gateway and application layers
 * Event-driven communication between services
-* Real-time user notifications
+* Real-time notifications that survive reconnects
 * Production-oriented database configuration
-* Observable request flow
+* Traceable requests across services
 * Containerized, automated deployment with safe rollback
-* Clean separation of responsibilities
 
 ---
 
-# Future Improvements
+# Future improvements
 
-* Email verification
-* Password reset workflow
+* Publish `ROLE_CHANGED`, `PASSWORD_CHANGED` and `ACCOUNT_DELETED` events (already in the contract)
+* Email verification and password reset
 * Account lockout / suspicious-login detection
 * MFA / TOTP
 * Redis-backed distributed rate limiting
 * Distributed tracing with OpenTelemetry
 * Prometheus + Grafana dashboards
-* Kubernetes deployment
 * Secret management with AWS Secrets Manager
-* Asymmetric JWT signing (RS256 / JWKS) for zero-trust verification across services
+* Asymmetric JWT signing (RS256 / JWKS)
 
 ---
 
@@ -1184,12 +1118,6 @@ The project follows [Semantic Versioning](https://semver.org/). Releases are tag
 
 Backend / Software Engineer focused on Java, Spring Boot, distributed systems, databases, and production backend infrastructure.
 
----
-
-## Project
-
 If you find the project useful, consider giving it a ⭐.
 
-Built with **Java 21 + Spring Boot + PostgreSQL + Redis + Kafka + OpenResty**.
-
-Licensed under [MIT](LICENSE).
+Built with **Java 21 + Spring Boot + PostgreSQL + Redis + Kafka + OpenResty** · Licensed under [MIT](LICENSE).
