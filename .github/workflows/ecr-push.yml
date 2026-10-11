@@ -15,6 +15,7 @@ env:
   # Deploy target on the EC2 instance - change to match your VM
   DEPLOY_USER: ubuntu
   DEPLOY_SCRIPT: /home/ubuntu/deploy.sh
+  PUBLIC_URL: https://authvolt.fun
 
 jobs:
   # Stage 1: Tests, lint and application builds
@@ -262,9 +263,64 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history, so we can diff against the previous commit
+
+      - name: Configure AWS credentials
+        if: github.event_name == 'push'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::117963306411:role/GitHubActionsECRPushRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Decide whether this service needs a new image.
+      # Unchanged services reuse the previous image (same digest), so the VM
+      # does not restart their containers on deploy.
+      - name: Detect changes
+        id: changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          SERVICE="${{ matrix.name }}"
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+          fi
+
+          # Paths that affect this image. Workflow changes rebuild everything.
+          PATHS=("$SERVICE/" ".github/workflows/")
+          if [[ "${{ matrix.maven }}" == "true" ]]; then
+            PATHS+=("notification-contract/" "pom.xml")
+          fi
+
+          BUILD=true
+          if [[ -z "$BASE" || "$BASE" =~ ^0+$ ]] || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            REASON="no usable base commit - building"
+          elif git diff --quiet "$BASE" "$GITHUB_SHA" -- "${PATHS[@]}"; then
+            BUILD=false
+            REASON="no changes in ${PATHS[*]} since ${BASE::7}"
+          else
+            REASON="changed since ${BASE::7}: $(git diff --name-only "$BASE" "$GITHUB_SHA" -- "${PATHS[@]}" | head -5 | tr '\n' ' ')"
+          fi
+
+          # On a push, reusing is only possible if the base image exists in ECR
+          if [[ "$BUILD" == "false" && "$GITHUB_EVENT_NAME" == "push" ]]; then
+            if ! aws ecr describe-images --repository-name "$SERVICE" \
+                   --image-ids imageTag="${BASE::7}" >/dev/null 2>&1; then
+              BUILD=true
+              REASON="no changes, but $SERVICE:${BASE::7} is not in ECR - building"
+            fi
+          fi
+
+          echo "$SERVICE: build=$BUILD ($REASON)"
+          echo "### $SERVICE: build=$BUILD" >> "$GITHUB_STEP_SUMMARY"
+          echo "$REASON" >> "$GITHUB_STEP_SUMMARY"
+          echo "build=$BUILD" >> "$GITHUB_OUTPUT"
+          echo "base_tag=${BASE::7}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Java
-        if: matrix.maven
+        if: matrix.maven && steps.changes.outputs.build == 'true'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -275,12 +331,12 @@ jobs:
             ${{ matrix.name }}/pom.xml
 
       - name: Install notification-contract
-        if: matrix.maven
+        if: matrix.maven && steps.changes.outputs.build == 'true'
         working-directory: notification-contract
         run: mvn -B -DskipTests install
 
       - name: Package application
-        if: matrix.maven
+        if: matrix.maven && steps.changes.outputs.build == 'true'
         working-directory: ${{ matrix.name }}
         run: mvn -B -DskipTests package
 
@@ -296,6 +352,7 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Build Docker image
+        if: steps.changes.outputs.build == 'true'
         shell: bash
         env:
           VITE_API_URL: ${{ vars.VITE_API_URL }}
@@ -315,6 +372,7 @@ jobs:
             "./${{ matrix.name }}"
 
       - name: Trivy image scan
+        if: steps.changes.outputs.build == 'true'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           image-ref: ${{ matrix.name }}:${{ steps.tag.outputs.tag }}
@@ -325,7 +383,7 @@ jobs:
           output: trivy-image.txt
 
       - name: Publish image scan summary
-        if: always()
+        if: always() && steps.changes.outputs.build == 'true'
         run: |
           {
             echo "## Trivy image scan: ${{ matrix.name }}"
@@ -339,7 +397,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Trivy image gate (fail on fixable CRITICAL)
-        if: matrix.gate
+        if: matrix.gate && steps.changes.outputs.build == 'true'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           image-ref: ${{ matrix.name }}:${{ steps.tag.outputs.tag }}
@@ -348,19 +406,12 @@ jobs:
           exit-code: '1'
           format: table
 
-      - name: Configure AWS credentials
-        if: github.event_name == 'push'
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::117963306411:role/GitHubActionsECRPushRole
-          aws-region: ${{ env.AWS_REGION }}
-
       - name: Login to Amazon ECR
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.changes.outputs.build == 'true'
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Push image to ECR
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.changes.outputs.build == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -370,6 +421,32 @@ jobs:
 
           docker tag "$LOCAL_IMAGE" "$REMOTE_IMAGE"
           docker push "$REMOTE_IMAGE"
+
+      # Unchanged service: give the previous image the new tag (no rebuild, no
+      # data transfer). Same digest -> docker compose does not restart it.
+      - name: Reuse previous image (retag in ECR)
+        if: github.event_name == 'push' && steps.changes.outputs.build == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPO="${{ matrix.name }}"
+          SRC="${{ steps.changes.outputs.base_tag }}"
+          DST="${{ steps.tag.outputs.tag }}"
+
+          if aws ecr describe-images --repository-name "$REPO" \
+               --image-ids imageTag="$DST" >/dev/null 2>&1; then
+            echo "$REPO:$DST already exists (re-run) - nothing to do."
+            exit 0
+          fi
+
+          MANIFEST=$(aws ecr batch-get-image --repository-name "$REPO" \
+            --image-ids imageTag="$SRC" --query 'images[0].imageManifest' --output text)
+          MEDIA_TYPE=$(aws ecr batch-get-image --repository-name "$REPO" \
+            --image-ids imageTag="$SRC" --query 'images[0].imageManifestMediaType' --output text)
+
+          aws ecr put-image --repository-name "$REPO" --image-tag "$DST" \
+            --image-manifest "$MANIFEST" --image-manifest-media-type "$MEDIA_TYPE" >/dev/null
+          echo "Retagged $REPO:$SRC -> $REPO:$DST (same image, no rebuild)"
 
   # Single required check for branch protection
   ci-passed:
@@ -402,7 +479,8 @@ jobs:
 
           echo "All required CI stages passed."
 
-  # Stage 5: Deploy to EC2 via SSM - only on a push to main (i.e. a merged PR)
+  # Stage 5: Deploy to EC2 via SSM - only on a push to main (i.e. a merged PR).
+  # deploy.sh itself health-checks + smoke-tests on the VM and rolls back on failure.
   deploy:
     name: deploy
     needs: ci-passed
@@ -418,6 +496,8 @@ jobs:
       cancel-in-progress: false
 
     steps:
+      - uses: actions/checkout@v4
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -425,37 +505,90 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Deploy via SSM
-        shell: bash
         env:
           INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
         run: |
-          set -euo pipefail
-          test -n "$INSTANCE_ID" || { echo "EC2_INSTANCE_ID secret is missing."; exit 1; }
-
           TAG="${GITHUB_SHA::7}"
-          PARAMS=$(jq -nc --arg c "sudo -u $DEPLOY_USER $DEPLOY_SCRIPT $TAG" '{commands: [$c]}')
+          SSM_COMMENT="Deploy $TAG" \
+            bash .github/scripts/ssm-run.sh "sudo -u $DEPLOY_USER $DEPLOY_SCRIPT $TAG"
 
-          CMD_ID=$(aws ssm send-command \
-            --instance-ids "$INSTANCE_ID" \
-            --document-name AWS-RunShellScript \
-            --comment "Deploy $TAG" \
-            --parameters "$PARAMS" \
-            --query Command.CommandId --output text)
-          echo "SSM command: $CMD_ID (tag $TAG)"
+  # Stage 6: Smoke test from outside the VM (internet -> DNS -> TLS -> nginx -> services)
+  smoke-test:
+    name: smoke-test
+    needs: deploy
+    runs-on: ubuntu-latest
 
-          STATUS=Pending
-          for i in $(seq 1 120); do
-            sleep 10
-            STATUS=$(aws ssm get-command-invocation \
-              --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
-              --query Status --output text 2>/dev/null || echo Pending)
-            echo "Status: $STATUS"
-            case "$STATUS" in Success|Failed|Cancelled|TimedOut) break ;; esac
-          done
+    steps:
+      - uses: actions/checkout@v4
 
-          echo "----- output from VM -----"
-          aws ssm get-command-invocation \
-            --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
-            --query '[StandardOutputContent,StandardErrorContent]' --output text || true
+      - name: Smoke test public endpoints
+        run: bash .github/scripts/smoke-test.sh "$PUBLIC_URL"
 
-          test "$STATUS" = "Success"
+  # Stage 7: Only when the public smoke test fails -
+  #   1. put the VM back on the previous main version
+  #   2. open a revert PR for a human to review (never pushes to main directly)
+  rollback:
+    name: rollback
+    needs: [deploy, smoke-test]
+    if: failure() && needs.smoke-test.result == 'failure'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write        # push the revert branch
+      pull-requests: write   # open the revert PR
+      id-token: write        # AWS OIDC
+
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::117963306411:role/GitHubActionsECRPushRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Roll back VM to previous version
+        env:
+          INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+          PREV_SHA: ${{ github.event.before }}
+        run: |
+          PREV="${PREV_SHA::7}"
+          echo "Rolling back from ${GITHUB_SHA::7} to $PREV"
+          SSM_COMMENT="Rollback to $PREV" \
+            bash .github/scripts/ssm-run.sh "sudo -u $DEPLOY_USER $DEPLOY_SCRIPT $PREV"
+
+      - name: Open revert PR
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREV_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          SHORT="${GITHUB_SHA::7}"
+          PREV_SHORT="${PREV_SHA::7}"
+          BRANCH="revert/$SHORT"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH" "$GITHUB_SHA"
+
+          # A merge commit needs -m 1 (keep main's side); a squash/plain commit does not
+          if [ "$(git rev-list --parents -n 1 "$GITHUB_SHA" | wc -w)" -gt 2 ]; then
+            git revert --no-edit -m 1 "$GITHUB_SHA"
+          else
+            git revert --no-edit "$GITHUB_SHA"
+          fi
+          git push origin "$BRANCH"
+
+          gh pr create --base main --head "$BRANCH" \
+            --title "Revert $SHORT: post-deploy smoke test failed" \
+            --body "Automated revert opened by run ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}.
+
+          The public smoke test failed after deploying \`$SHORT\`, so the VM was rolled back to \`$PREV_SHORT\`.
+
+          **Review before merging.** If the failure was not caused by this change (network, DNS, certificate), close this PR instead."
