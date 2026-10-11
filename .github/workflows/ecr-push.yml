@@ -1,4 +1,3 @@
-
 name: CI
 
 on:
@@ -6,6 +5,7 @@ on:
     branches: [develop, main]
   push:
     branches: [develop, main]
+  workflow_dispatch:        # manual run from the Actions tab (use on main to redeploy)
 
 permissions:
   contents: read
@@ -13,6 +13,9 @@ permissions:
 env:
   AWS_REGION: ap-northeast-1
   ECR_REGISTRY: 117963306411.dkr.ecr.ap-northeast-1.amazonaws.com
+  # Deploy target on the EC2 instance - change to match your VM
+  DEPLOY_USER: ubuntu
+  DEPLOY_SCRIPT: /home/ubuntu/deploy.sh
 
 jobs:
   # Stage 1: Tests, lint and application builds
@@ -79,36 +82,36 @@ jobs:
         run: |
           echo "## JaCoCo Coverage Report - ${{ matrix.name }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
+
           XML_FILE="${{ matrix.name }}/target/site/jacoco/jacoco.xml"
-          
+
           if [ -f "$XML_FILE" ]; then
             python3 - << 'PYEOF' >> $GITHUB_STEP_SUMMARY
           import xml.etree.ElementTree as ET
-          
+
           try:
               tree = ET.parse('${{ matrix.name }}/target/site/jacoco/jacoco.xml')
               root = tree.getroot()
-              
+
               for counter in root.findall('./counter'):
                   counter_type = counter.get('type')
                   missed = int(counter.get('missed', 0))
                   covered = int(counter.get('covered', 0))
                   total = missed + covered
-                  
+
                   if total > 0:
                       percentage = (covered * 100) // total
-                      
+
                       if counter_type == 'INSTRUCTION':
                           print(f"📊 **Instruction Coverage:** {percentage}% ({covered}/{total})")
                       elif counter_type == 'BRANCH':
                           print(f"🔀 **Branch Coverage:** {percentage}% ({covered}/{total})")
                       elif counter_type == 'LINE':
                           print(f"📝 **Line Coverage:** {percentage}% ({covered}/{total})")
-              
+
               print("")
               print("📁 [Download Full Report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})")
-              
+
           except Exception as e:
               print(f"⚠️ Error parsing coverage: {str(e)}")
           PYEOF
@@ -213,7 +216,7 @@ jobs:
             -Dsonar.projectKey=lodhiPlayBits_AuthService
 
   # Stage 4: Build and scan images on PRs;
-  # push images to ECR only after a branch push.
+  # push images to ECR on branch pushes and manual runs.
   build-push:
     name: build-push (${{ matrix.name }})
     needs: [test, scan]
@@ -276,8 +279,21 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Build Docker image
+        shell: bash
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
         run: |
-          docker build \
+          set -euo pipefail
+          ARGS=()
+          if [[ "${{ matrix.name }}" == "client" ]]; then
+            # Vite bakes these into the JS bundle at build time
+            test -n "$VITE_API_URL" || { echo "Repository variable VITE_API_URL is missing."; exit 1; }
+            test -n "$VITE_GOOGLE_CLIENT_ID" || { echo "Repository variable VITE_GOOGLE_CLIENT_ID is missing."; exit 1; }
+            ARGS+=(--build-arg "VITE_API_URL=$VITE_API_URL")
+            ARGS+=(--build-arg "VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID")
+          fi
+          docker build "${ARGS[@]}" \
             -t "${{ matrix.name }}:${{ steps.tag.outputs.tag }}" \
             "./${{ matrix.name }}"
 
@@ -306,18 +322,18 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Configure AWS credentials
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::117963306411:role/GitHubActionsECRPushRole
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Push image to ECR
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
@@ -358,3 +374,61 @@ jobs:
           done
 
           echo "All required CI stages passed."
+
+  # Stage 5: Deploy to EC2 via SSM - main branch only
+  deploy:
+    name: deploy
+    needs: ci-passed
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::117963306411:role/GitHubActionsECRPushRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy via SSM
+        shell: bash
+        env:
+          INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$INSTANCE_ID" || { echo "EC2_INSTANCE_ID secret is missing."; exit 1; }
+
+          TAG="${GITHUB_SHA::7}"
+          PARAMS=$(jq -nc --arg c "sudo -u $DEPLOY_USER $DEPLOY_SCRIPT $TAG" '{commands: [$c]}')
+
+          CMD_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "Deploy $TAG" \
+            --parameters "$PARAMS" \
+            --query Command.CommandId --output text)
+          echo "SSM command: $CMD_ID (tag $TAG)"
+
+          STATUS=Pending
+          for i in $(seq 1 60); do
+            sleep 10
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
+              --query Status --output text 2>/dev/null || echo Pending)
+            echo "Status: $STATUS"
+            case "$STATUS" in Success|Failed|Cancelled|TimedOut) break ;; esac
+          done
+
+          echo "----- output from VM -----"
+          aws ssm get-command-invocation \
+            --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
+            --query '[StandardOutputContent,StandardErrorContent]' --output text || true
+
+          test "$STATUS" = "Success"
