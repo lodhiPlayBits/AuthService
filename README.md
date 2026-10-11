@@ -69,8 +69,9 @@ audit:read        audit:manage
 
 Requests pass through an **OpenResty/Nginx gateway** before reaching any Spring Boot service.
 
-* TLS termination
+* TLS termination, with HTTP redirected to HTTPS
 * Let's Encrypt certificates (auto-renewed by `certbot`)
+* Security headers: HSTS, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`
 * Self-signed certificate fallback for local development
 * Lua-based request validation
 * Per-route rate limiting
@@ -111,7 +112,99 @@ connections            → max 20 per IP
 
 # Architecture
 
-<!-- Add the Eraser architecture image here, e.g. ![Architecture](docs/architecture.png) -->
+## Runtime
+
+```mermaid
+flowchart LR
+    user(["Browser"])
+    google(["Google OAuth"])
+
+    subgraph aws["AWS ap-northeast-1"]
+        direction LR
+        subgraph ec2["EC2 t3.large · Docker Compose"]
+            direction LR
+            nginx["nginx-gateway<br/>OpenResty · TLS<br/>rate limiting · Lua validation"]
+            client["client-service<br/>React SPA"]
+            auth["auth-service<br/>Spring Boot · :5001"]
+            notif["notification-service<br/>Spring Boot · :5002"]
+            redis[("Redis")]
+            subgraph kafka["Kafka · KRaft"]
+                k1[("broker 1")]
+                k2[("broker 2")]
+            end
+            certbot["certbot<br/>Let's Encrypt"]
+        end
+        rds[("PostgreSQL<br/>Amazon RDS")]
+    end
+
+    user -->|"HTTPS authvolt.fun"| nginx
+    user -.->|"Sign in with Google"| google
+    nginx -->|"/client/"| client
+    nginx -->|"/api/v1/* · /health"| auth
+    nginx -->|"/api/v1/notifications · /ws"| notif
+    auth -->|"JPA · Flyway"| rds
+    auth -->|"roles cache · token blacklist"| redis
+    auth -->|"verify ID token"| google
+    auth -->|"account-events"| kafka
+    kafka -->|"consume events"| notif
+    notif -->|"missed-event buffer"| redis
+    notif -.->|"SSE · WebSocket"| nginx
+    certbot -.->|"renews certificates"| nginx
+```
+
+## CI/CD
+
+```mermaid
+flowchart LR
+    pr(["Pull request<br/>or merge"])
+
+    subgraph ci["GitHub Actions · every PR and merge"]
+        direction TB
+        test["test<br/>Maven + JaCoCo · Vitest + ESLint"]
+        scan["scan<br/>Trivy dependencies<br/>fails on fixable CRITICAL"]
+        sonar["sonar<br/>SonarCloud analysis"]
+        build["build-push<br/>changed service → build + Trivy image gate<br/>unchanged service → reuse previous image"]
+        passed{{"ci-passed<br/>required check"}}
+        test --> build
+        scan --> build
+        build --> passed
+        sonar --> passed
+    end
+
+    subgraph cd["Merge to main only"]
+        direction TB
+        deploy["deploy<br/>SSM → deploy.sh<br/>health checks + smoke tests on VM<br/>auto-rollback to last good tag"]
+        smoke["smoke-test<br/>public endpoints via DNS + TLS"]
+        rollback["rollback<br/>redeploy previous version<br/>open revert PR"]
+        deploy --> smoke
+        smoke -.->|"on failure"| rollback
+    end
+
+    ecr[("Amazon ECR<br/>6 repositories")]
+    vm["EC2"]
+
+    pr --> ci
+    passed --> deploy
+    build -->|"push via OIDC"| ecr
+    deploy -->|"aws ssm send-command"| vm
+    ecr -->|"pull · instance role"| vm
+```
+
+## Design decisions
+
+| Decision | Why |
+|---|---|
+| GitHub OIDC → IAM role | No long-lived AWS keys stored in GitHub; trust limited to `main` and `develop` |
+| AWS SSM instead of SSH | No open port 22, no SSH keys in CI |
+| Reuse unchanged images | App-only changes don't rebuild or restart Kafka and Redis |
+| Health checks + smoke tests before marking a deploy good | A running container isn't proof the service works; failure rolls back automatically |
+| Revert PR instead of auto-revert | Branch protection stays intact; a human decides whether the code was at fault |
+| Docker Compose instead of Kubernetes | Single node — Kubernetes adds cost and complexity with no benefit at this scale |
+| Kafka between auth and notification services | auth-service never waits on notification delivery; events survive a notification-service restart |
+| Events published after the DB commit | No notification is sent for a change that was rolled back |
+| HS512 shared secret for JWTs | Both services verify tokens locally with no call to auth-service; asymmetric keys are listed under future improvements |
+
+## Request routing (detailed)
 
 ```text
                                   ┌──────────────────────────────┐
@@ -129,10 +222,10 @@ connections            → max 20 per IP
  │  • X-Request-ID injection                   • CORS policy                                       │
  └──────┬──────────────────────┬──────────────────────────────────────────────────────┬────────────┘
         │                      │                                                      │
-        │                      │                                                      │
-        │ /                    │ /api/v1/auth                  /api/v1/notifications  │
+        │ /client/             │ /api/v1/auth                  /api/v1/notifications  │
         │                      │ /api/v1/users                     /ws/announcements  │
         │                      │ /api/v1/admin                                        │
+        │                      │ /health                                              │
         ▼                      ▼                                                      ▼
  ┌──────────────┐  ┌────────────────────────┐     ┌─────────────────┐     ┌────────────────────────┐
  │client-service│  │      auth-service      │pub  │  Kafka (KRaft)  │ sub │  notification-service  │
