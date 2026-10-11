@@ -56,22 +56,87 @@ AuthVolt is an authentication and notification platform built with Spring Boot 4
 
 ## Architecture
 
+### System overview
+
 ```mermaid
-flowchart LR
-    B[Browser<br/>React client] -->|HTTPS| N[nginx / OpenResty<br/>TLS · rate limiting]
+flowchart TB
+    user(["👤 Browser<br/>React SPA"])
+    google(["Google Identity"])
 
-    N -->|/api/v1/auth · /users · /admin| A[auth-service<br/>Spring Boot]
-    N -->|/api/v1/notifications · /ws| S[notification-service<br/>Spring Boot]
+    subgraph aws["☁️ AWS · ap-northeast-1"]
+        subgraph ec2["EC2 t3.large · Docker Compose"]
+            subgraph gw["nginx-gateway · OpenResty · :80 / :443"]
+                tls["TLS termination<br/>Let's Encrypt via certbot"]
+                lua["Lua request validation<br/>CORS · request ID · Bearer check"]
+                rl["Rate limits per IP<br/>login 3 r/s · API 10 r/s · 20 conns"]
+            end
 
-    A --> P[(PostgreSQL)]
-    A --> R[(Redis<br/>cache · token blacklist)]
-    A -->|account-events| K{{Kafka KRaft<br/>2 nodes}}
-    K --> S
-    S --> R
-    S -->|SSE · STOMP| B
+            client["client-service :80<br/>React static build"]
+            auth["auth-service :5001<br/>JWT · OAuth2 · RBAC · audit log"]
+            notif["notification-service :5002<br/>SSE · STOMP/WebSocket"]
+            redis[("redis-service :6379")]
+
+            subgraph kafka["Kafka · KRaft mode · no ZooKeeper"]
+                k1["kafka-node-1<br/>broker + controller"]
+                k2["kafka-node-2<br/>broker + controller"]
+                kui["Kafka UI · Prometheus exporter"]
+            end
+        end
+        rds[("Amazon RDS<br/>PostgreSQL")]
+    end
+
+    user ==>|HTTPS| gw
+    gw -->|"/"| client
+    gw -->|"/api/v1/auth · /users · /admin"| auth
+    gw -->|"/api/v1/notifications · /ws"| notif
+
+    auth -->|"JPA · Flyway V1–V14"| rds
+    auth -->|"roles cache · JWT blacklist"| redis
+    auth -->|"verify Google ID token"| google
+    auth -->|"produce: account-events"| kafka
+    kafka -->|"consume: account-events"| notif
+    notif <-->|"broadcast-announcements · admin-responses"| kafka
+    notif -->|"missed events buffer"| redis
+    notif -.->|"SSE stream · STOMP frames"| user
 ```
 
-Each component is a separate container with its own Compose file. CI builds them independently and pushes them to Amazon ECR. The EC2 host pulls images by commit SHA.
+### Request path
+
+1. **nginx** terminates TLS and applies the per-IP rate limits. A Lua script adds an `X-Request-ID` and rejects obviously bad requests (disallowed CORS origin, missing `Bearer` header on protected paths, missing `Content-Type`, oversized body) before they use a backend thread. It deliberately does **not** verify JWT signatures; Spring Security is the only component that does.
+2. **auth-service** validates the JWT (signature, `iss`, `aud`, expiry, Redis blacklist), checks permissions through `@RequiresPermission`, and calls PostgreSQL. Account changes are published to Kafka after the transaction commits.
+3. **notification-service** consumes those events and pushes them to the user's open SSE stream. If the user is offline, the event goes into a Redis buffer and is replayed when they reconnect.
+
+### Containers
+
+| Container | Port | Networks | Role |
+|---|---|---|---|
+| `nginx-gateway` | 80, 443 (public) | `authnet` | TLS, routing, rate limiting, Lua validation |
+| `certbot` | – | `authnet` | Renews Let's Encrypt certificates |
+| `client-service` | 80 | `authnet` | Serves the React build |
+| `auth-service` | 5001 | `authnet`, `authvolt-kafka-network` | Auth API, RBAC, audit, event producer |
+| `notification-service` | 5002 | `authnet`, `authvolt-kafka-network` | Event consumer, SSE + STOMP push |
+| `redis-service` | 6379 | `authnet` | Cache, token blacklist, missed-event buffer |
+| `authvolt-kafka-node-1/2` | 19092 (internal) | `authvolt-kafka-network` | 2-node KRaft cluster |
+| `authvolt-kafka-ui`, `authvolt-kafka-exporter` | 8080, 9308 | `authvolt-kafka-network` | Cluster UI and metrics |
+
+PostgreSQL runs on **Amazon RDS**, outside the VM. Only nginx publishes ports to the internet.
+
+### Kafka topics
+
+| Topic | Producer | Consumer | Purpose |
+|---|---|---|---|
+| `account-events` | auth-service | notification-service | `ACCOUNT_DISABLED`, `ACCOUNT_ENABLED`, `ACCOUNT_DELETED`, `PASSWORD_CHANGED`, `ROLE_CHANGED`, `SESSION_REVOKED` |
+| `account-events.DLT` | Spring Kafka | – | Dead-letter topic for events that keep failing |
+| `broadcast-announcements` | notification-service | notification-service (all instances) | Admin announcements fanned out to every connected client |
+| `admin-responses` | notification-service | notification-service | Ack and dismiss responses routed back to the admin |
+
+### Redis usage
+
+| Owner | Key / cache | TTL | Purpose |
+|---|---|---|---|
+| auth-service | `auth:roles::*` | 1 h | Cached role and permission lookups, evicted on any role change |
+| auth-service | token blacklist by `jti` | remaining token lifetime | Access tokens revoked by logout stop working immediately |
+| notification-service | missed events per user | 7 days, last 50 | Replayed to SSE clients when they reconnect |
 
 ---
 
@@ -240,14 +305,39 @@ Everything runs from one workflow, [`ecr-push.yml`](.github/workflows/ecr-push.y
 
 ```mermaid
 flowchart LR
-    T[Tests + JaCoCo] --> BP
-    SC[Trivy fs scan] --> BP
-    SQ[SonarCloud] --> G
-    BP[Build images<br/>Trivy image scan<br/>push to ECR] --> G{ci-passed}
-    G -->|main only| D[Deploy via SSM]
-    D --> ST[Public smoke test]
-    ST -->|fails| RB[Roll back VM<br/>open revert PR]
+    pr(["PR merged<br/>to main"]) --> tests
+
+    subgraph gha["GitHub Actions"]
+        tests["Tests + JaCoCo<br/>auth · notification · client"]
+        fs["Trivy filesystem scan<br/>6 components"]
+        sq["SonarCloud"]
+        build["Build changed images<br/>Trivy image gate"]
+        gate{"ci-passed"}
+        smoke["Public smoke test<br/>DNS → TLS → nginx → services"]
+        rb["Rollback job<br/>open revert PR"]
+    end
+
+    ecr[["Amazon ECR<br/>image tag = commit SHA"]]
+
+    subgraph vm["EC2"]
+        deploy["deploy.sh<br/>pull → up → wait healthy → local smoke"]
+        last["Redeploy last good tag"]
+    end
+
+    tests --> build
+    fs --> build
+    build -->|"push new image or<br/>retag unchanged one"| ecr
+    build --> gate
+    sq --> gate
+    gate -->|"AWS SSM Run Command"| deploy
+    ecr -.->|docker pull| deploy
+    deploy -->|"health/smoke fails"| last
+    deploy -->|ok| smoke
+    smoke -->|fails| rb
+    rb -->|"SSM: deploy previous SHA"| deploy
 ```
+
+There are two layers of protection. `deploy.sh` checks container health and runs a local smoke test, and redeploys the last good tag on failure. The GitHub job then tests the site from the public internet and rolls back if that fails too.
 
 - **PRs** run tests, scans and image builds, but push and deploy nothing.
 - **Pushes to `develop`** also push images to ECR.
