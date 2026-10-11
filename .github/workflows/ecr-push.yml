@@ -179,6 +179,16 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Trivy filesystem gate (fail on fixable CRITICAL)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          scan-type: fs
+          scan-ref: ./${{ matrix.name }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          format: table
+
   # Stage 3: SonarCloud analysis for auth-service
   sonar:
     name: sonar
@@ -229,18 +239,26 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # gate: true  -> a fixable CRITICAL vulnerability fails the build
+          # gate: false -> report only (third-party base image, upgrade tracked separately)
           - name: auth-service
             maven: true
+            gate: true
           - name: notification-service
             maven: true
+            gate: true
           - name: client
             maven: false
-          - name: kafka
-            maven: false
-          - name: nginx
-            maven: false
+            gate: true
           - name: redis
             maven: false
+            gate: true
+          - name: kafka
+            maven: false
+            gate: false   # TODO: upgrade cp-kafka base image, then set true
+          - name: nginx
+            maven: false
+            gate: false   # TODO: upgrade openresty base image, then set true
 
     steps:
       - uses: actions/checkout@v4
@@ -319,6 +337,16 @@ jobs:
             fi
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Trivy image gate (fail on fixable CRITICAL)
+        if: matrix.gate
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          image-ref: ${{ matrix.name }}:${{ steps.tag.outputs.tag }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          format: table
 
       - name: Configure AWS credentials
         if: github.event_name == 'push'
