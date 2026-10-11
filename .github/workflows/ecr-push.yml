@@ -5,7 +5,6 @@ on:
     branches: [develop, main]
   push:
     branches: [develop, main]
-  workflow_dispatch:        # manual run from the Actions tab (use on main to redeploy)
 
 permissions:
   contents: read
@@ -216,7 +215,7 @@ jobs:
             -Dsonar.projectKey=lodhiPlayBits_AuthService
 
   # Stage 4: Build and scan images on PRs;
-  # push images to ECR on branch pushes and manual runs.
+  # push images to ECR only after a branch push.
   build-push:
     name: build-push (${{ matrix.name }})
     needs: [test, scan]
@@ -322,18 +321,18 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Configure AWS credentials
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'push'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::117963306411:role/GitHubActionsECRPushRole
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'push'
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Push image to ECR
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'push'
         shell: bash
         run: |
           set -euo pipefail
@@ -375,11 +374,11 @@ jobs:
 
           echo "All required CI stages passed."
 
-  # Stage 5: Deploy to EC2 via SSM - main branch only
+  # Stage 5: Deploy to EC2 via SSM - only on a push to main (i.e. a merged PR)
   deploy:
     name: deploy
     needs: ci-passed
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
     permissions:
