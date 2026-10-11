@@ -244,9 +244,64 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history, so we can diff against the previous commit
+
+      - name: Configure AWS credentials
+        if: github.event_name == 'push'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::117963306411:role/GitHubActionsECRPushRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Decide whether this service needs a new image.
+      # Unchanged services reuse the previous image (same digest), so the VM
+      # does not restart their containers on deploy.
+      - name: Detect changes
+        id: changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          SERVICE="${{ matrix.name }}"
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+          fi
+
+          # Paths that affect this image. Workflow changes rebuild everything.
+          PATHS=("$SERVICE/" ".github/workflows/")
+          if [[ "${{ matrix.maven }}" == "true" ]]; then
+            PATHS+=("notification-contract/" "pom.xml")
+          fi
+
+          BUILD=true
+          if [[ -z "$BASE" || "$BASE" =~ ^0+$ ]] || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            REASON="no usable base commit - building"
+          elif git diff --quiet "$BASE" "$GITHUB_SHA" -- "${PATHS[@]}"; then
+            BUILD=false
+            REASON="no changes in ${PATHS[*]} since ${BASE::7}"
+          else
+            REASON="changed since ${BASE::7}: $(git diff --name-only "$BASE" "$GITHUB_SHA" -- "${PATHS[@]}" | head -5 | tr '\n' ' ')"
+          fi
+
+          # On a push, reusing is only possible if the base image exists in ECR
+          if [[ "$BUILD" == "false" && "$GITHUB_EVENT_NAME" == "push" ]]; then
+            if ! aws ecr describe-images --repository-name "$SERVICE" \
+                   --image-ids imageTag="${BASE::7}" >/dev/null 2>&1; then
+              BUILD=true
+              REASON="no changes, but $SERVICE:${BASE::7} is not in ECR - building"
+            fi
+          fi
+
+          echo "$SERVICE: build=$BUILD ($REASON)"
+          echo "### $SERVICE: build=$BUILD" >> "$GITHUB_STEP_SUMMARY"
+          echo "$REASON" >> "$GITHUB_STEP_SUMMARY"
+          echo "build=$BUILD" >> "$GITHUB_OUTPUT"
+          echo "base_tag=${BASE::7}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Java
-        if: matrix.maven
+        if: matrix.maven && steps.changes.outputs.build == 'true'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -257,12 +312,12 @@ jobs:
             ${{ matrix.name }}/pom.xml
 
       - name: Install notification-contract
-        if: matrix.maven
+        if: matrix.maven && steps.changes.outputs.build == 'true'
         working-directory: notification-contract
         run: mvn -B -DskipTests install
 
       - name: Package application
-        if: matrix.maven
+        if: matrix.maven && steps.changes.outputs.build == 'true'
         working-directory: ${{ matrix.name }}
         run: mvn -B -DskipTests package
 
@@ -278,6 +333,7 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Build Docker image
+        if: steps.changes.outputs.build == 'true'
         shell: bash
         env:
           VITE_API_URL: ${{ vars.VITE_API_URL }}
@@ -297,6 +353,7 @@ jobs:
             "./${{ matrix.name }}"
 
       - name: Trivy image scan
+        if: steps.changes.outputs.build == 'true'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           image-ref: ${{ matrix.name }}:${{ steps.tag.outputs.tag }}
@@ -307,7 +364,7 @@ jobs:
           output: trivy-image.txt
 
       - name: Publish image scan summary
-        if: always()
+        if: always() && steps.changes.outputs.build == 'true'
         run: |
           {
             echo "## Trivy image scan: ${{ matrix.name }}"
@@ -320,19 +377,31 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+<<<<<<< Updated upstream
       - name: Configure AWS credentials
         if: github.event_name == 'push'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::117963306411:role/GitHubActionsECRPushRole
           aws-region: ${{ env.AWS_REGION }}
+=======
+      - name: Trivy image gate (fail on fixable CRITICAL)
+        if: matrix.gate && steps.changes.outputs.build == 'true'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          image-ref: ${{ matrix.name }}:${{ steps.tag.outputs.tag }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          format: table
+>>>>>>> Stashed changes
 
       - name: Login to Amazon ECR
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.changes.outputs.build == 'true'
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Push image to ECR
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.changes.outputs.build == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -342,6 +411,32 @@ jobs:
 
           docker tag "$LOCAL_IMAGE" "$REMOTE_IMAGE"
           docker push "$REMOTE_IMAGE"
+
+      # Unchanged service: give the previous image the new tag (no rebuild, no
+      # data transfer). Same digest -> docker compose does not restart it.
+      - name: Reuse previous image (retag in ECR)
+        if: github.event_name == 'push' && steps.changes.outputs.build == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPO="${{ matrix.name }}"
+          SRC="${{ steps.changes.outputs.base_tag }}"
+          DST="${{ steps.tag.outputs.tag }}"
+
+          if aws ecr describe-images --repository-name "$REPO" \
+               --image-ids imageTag="$DST" >/dev/null 2>&1; then
+            echo "$REPO:$DST already exists (re-run) - nothing to do."
+            exit 0
+          fi
+
+          MANIFEST=$(aws ecr batch-get-image --repository-name "$REPO" \
+            --image-ids imageTag="$SRC" --query 'images[0].imageManifest' --output text)
+          MEDIA_TYPE=$(aws ecr batch-get-image --repository-name "$REPO" \
+            --image-ids imageTag="$SRC" --query 'images[0].imageManifestMediaType' --output text)
+
+          aws ecr put-image --repository-name "$REPO" --image-tag "$DST" \
+            --image-manifest "$MANIFEST" --image-manifest-media-type "$MEDIA_TYPE" >/dev/null
+          echo "Retagged $REPO:$SRC -> $REPO:$DST (same image, no rebuild)"
 
   # Single required check for branch protection
   ci-passed:
