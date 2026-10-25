@@ -42,10 +42,14 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         // Configure CSRF protection
-        // - Enabled for /api/v1/auth/refresh (uses cookie-based refresh token)
-        // - Disabled for /api/v1/auth/login and /api/v1/auth/register (stateless, bearer token only)
-        // - Disabled for other authenticated endpoints (use Authorization: Bearer header)
-        // - Disabled for /actuator/** (health checks should be stateless)
+        // SECURITY REVIEW: CSRF selectively disabled — safe for the following reasons:
+        // - /api/v1/auth/login, /register: Stateless, no session/cookie used; protected by rate-limiting
+        // - /api/v1/auth/oauth2/**: OAuth2 flows use Authorization code + PKCE, no cookies
+        // - /api/v1/admin/**, /api/v1/users/**: Authenticated via Bearer token (Authorization header),
+        //   not cookies — CSRF is irrelevant for non-cookie-based auth
+        // - /actuator/**: Infrastructure endpoints behind network-level access control
+        // NOTE: /api/v1/auth/refresh and /api/v1/auth/logout use cookie-based refresh tokens
+        //        and REMAIN CSRF-PROTECTED (not listed below)
         CsrfTokenRequestAttributeHandler requestHandler = new CsrfTokenRequestAttributeHandler();
         requestHandler.setCsrfRequestAttributeName("_csrf");
         
@@ -60,7 +64,6 @@ public class SecurityConfig {
                         "/api/v1/users/**",
                         "/actuator/**"
                 )
-                // /api/v1/auth/refresh and /api/v1/auth/logout REQUIRE CSRF - they use cookies
         );
         
         http.cors(Customizer.withDefaults());
