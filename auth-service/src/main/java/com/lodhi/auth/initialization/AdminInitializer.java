@@ -43,7 +43,7 @@ public class AdminInitializer implements CommandLineRunner {
     private String adminPhoneNumber;
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public void run(String... args) throws Exception {
 
         if (userRepository.existsByEmail(adminEmail)) {
