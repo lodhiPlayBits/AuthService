@@ -49,7 +49,7 @@ class UserRepositoryIntegrationTest extends BaseIntegrationTest {
         // Find User
         Optional<User> foundUser = userRepository.findByEmail("repo_test@example.com");
         assertTrue(foundUser.isPresent());
-        assertEquals("repo_test@example.com", foundUser.get().getUsername());
+        assertEquals("repotest", foundUser.get().getUsername());
         
         Optional<User> foundUserWithRoles = userRepository.findByIdWithRolesAndPermissions(savedUser.getId());
         assertTrue(foundUserWithRoles.isPresent());
